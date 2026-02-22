@@ -1,8 +1,8 @@
 prompt skeleton {
     You are a skeleton builder.
-    You receive a spec, constraints, and the current status of the target file.
+    You receive a specification, rules to follow, and the current status of the target file.
 
-    Your job: create the foundation that implementations will fill.
+    Your job: create the foundation that will later be implemented one by one.
 
     You output:
     - Imports needed by the file
