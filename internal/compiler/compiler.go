@@ -2,8 +2,10 @@ package compiler
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/vailang/vai/internal/coder"
 	"github.com/vailang/vai/internal/compiler/ast"
@@ -11,6 +13,7 @@ import (
 	"github.com/vailang/vai/internal/compiler/lexer"
 	"github.com/vailang/vai/internal/compiler/parser"
 	"github.com/vailang/vai/internal/compiler/reader"
+	"github.com/vailang/vai/std"
 )
 
 // compiler implements the Compiler interface.
@@ -32,11 +35,11 @@ func (c *compiler) Parse(path string) (Program, []error) {
 		return &program{}, []error{fmt.Errorf("no .vai or .plan files found in %s", path)}
 	}
 
-	return c.parseSources(sources)
+	return c.ParseSources(sources)
 }
 
-// parseSources compiles multiple vai sources into a single program.
-func (c *compiler) parseSources(sources map[string]string) (Program, []error) {
+// ParseSources compiles multiple vai sources into a single program.
+func (c *compiler) ParseSources(sources map[string]string) (Program, []error) {
 	// Sort paths for deterministic ordering.
 	paths := make([]string, 0, len(sources))
 	for p := range sources {
@@ -62,11 +65,23 @@ func (c *compiler) parseSources(sources map[string]string) (Program, []error) {
 		return &program{}, errs
 	}
 
+	// Load standard library prompts.
+	stdPrompts, stdErrs := loadStdPrompts()
+	if len(stdErrs) > 0 {
+		return &program{}, stdErrs
+	}
+
+	// Build knownPrompts map for composer validation of std.X references.
+	knownPrompts := make(map[string]bool, len(stdPrompts))
+	for name := range stdPrompts {
+		knownPrompts[name] = true
+	}
+
 	// Create a target resolver that lazily loads coders on demand.
 	tr := newTargetResolver()
 
 	astSrc := &fileSource{files: files}
-	comp := composer.New(astSrc, nil, tr, nil)
+	comp := composer.New(astSrc, nil, tr, knownPrompts)
 	compErrs := comp.Validate()
 	for _, ce := range compErrs {
 		errs = append(errs, ce)
@@ -84,7 +99,50 @@ func (c *compiler) parseSources(sources map[string]string) (Program, []error) {
 	}
 
 	requests := comp.Requests()
-	return &program{file: merged, requests: requests, targetResolver: tr}, nil
+	return &program{file: merged, requests: requests, targetResolver: tr, stdPrompts: stdPrompts}, nil
+}
+
+// loadStdPrompts parses the embedded standard library .vai files and returns
+// a map of qualified prompt names (e.g. "std.planner_role") to their AST declarations.
+func loadStdPrompts() (map[string]*ast.PromptDecl, []error) {
+	prompts := make(map[string]*ast.PromptDecl)
+
+	err := fs.WalkDir(std.Standard, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".vai") {
+			return nil
+		}
+
+		content, err := fs.ReadFile(std.Standard, path)
+		if err != nil {
+			return err
+		}
+
+		cs := reader.NewVaiSource(string(content))
+		scanner := lexer.NewScanner(cs)
+		p := parser.New(scanner)
+		file, parseErrs := p.ParseFile()
+		if len(parseErrs) > 0 {
+			return parseErrs[0]
+		}
+
+		for _, decl := range file.Declarations {
+			if pd, ok := decl.(*ast.PromptDecl); ok {
+				prompts["std."+pd.Name] = pd
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, []error{fmt.Errorf("loading std library: %w", err)}
+	}
+
+	return prompts, nil
 }
 
 // ---------------------------------------------------------------------------

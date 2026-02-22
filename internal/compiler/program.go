@@ -17,6 +17,7 @@ type program struct {
 	file           *ast.File
 	requests       []composer.Request
 	targetResolver *targetResolverImpl
+	stdPrompts     map[string]*ast.PromptDecl // "std.name" → PromptDecl
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +64,7 @@ func (p *program) Eval(source string) (string, error) {
 		return "", err
 	}
 
-	tmp := &program{file: combined, requests: p.requests, targetResolver: p.targetResolver}
+	tmp := &program{file: combined, requests: p.requests, targetResolver: p.targetResolver, stdPrompts: p.stdPrompts}
 	result := render.Exec(combined, tmp.indexPrompts(), tmp.indexPlans(), p.targetResolver, tmp.baseDir())
 	return result, nil
 }
@@ -224,9 +225,14 @@ func (p *program) indexPlans() map[string]*ast.PlanDecl {
 	return plans
 }
 
-// indexPrompts builds a name → PromptDecl map from the merged AST.
+// indexPrompts builds a name → PromptDecl map from the merged AST,
+// including standard library prompts with "std." prefix.
 func (p *program) indexPrompts() map[string]*ast.PromptDecl {
 	prompts := map[string]*ast.PromptDecl{}
+	// Add std prompts first so user prompts can shadow them.
+	for name, pd := range p.stdPrompts {
+		prompts[name] = pd
+	}
 	if p.file == nil {
 		return prompts
 	}

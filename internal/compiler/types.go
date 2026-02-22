@@ -9,6 +9,9 @@ import (
 type Compiler interface {
 	// Parse reads .vai files from path, validates, and returns a compiled Program.
 	Parse(vaiPath string) (Program, []error)
+
+	// ParseSources compiles pre-loaded vai sources into a single program.
+	ParseSources(sources map[string]string) (Program, []error)
 }
 
 // Program represents a compiled vai program ready for inspection and execution.

@@ -9,7 +9,7 @@ import (
 func compileSource(t *testing.T, source string) Program {
 	t.Helper()
 	c := &compiler{}
-	prog, errs := c.parseSources(map[string]string{"test.vai": source})
+	prog, errs := c.ParseSources(map[string]string{"test.vai": source})
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -72,7 +72,7 @@ func TestCompilerMultipleInjects(t *testing.T) {
 
 func TestCompilerEmpty(t *testing.T) {
 	c := &compiler{}
-	prog, errs := c.parseSources(map[string]string{"test.vai": ""})
+	prog, errs := c.ParseSources(map[string]string{"test.vai": ""})
 	if len(errs) > 0 {
 		t.Fatalf("unexpected parse errors: %v", errs)
 	}
@@ -83,7 +83,7 @@ func TestCompilerEmpty(t *testing.T) {
 
 func TestCompilerParseError(t *testing.T) {
 	c := &compiler{}
-	_, errs := c.parseSources(map[string]string{"test.vai": `func {`})
+	_, errs := c.ParseSources(map[string]string{"test.vai": `func {`})
 	if len(errs) == 0 {
 		t.Fatal("expected parse errors for invalid source")
 	}
@@ -118,7 +118,7 @@ func TestCompilerMultiFile(t *testing.T) {
 	}
 
 	c := &compiler{}
-	prog, errs := c.parseSources(sources)
+	prog, errs := c.ParseSources(sources)
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
