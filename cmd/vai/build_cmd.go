@@ -18,8 +18,16 @@ func buildCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			comp := compiler.New()
 
+			prog, errs := comp.Parse(args[0])
+			if len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintf(os.Stderr, "error: %v\n", e)
+				}
+				return fmt.Errorf("compilation failed with %d error(s)", len(errs))
+			}
+
 			if evalExpr != "" {
-				output, err := comp.Eval(args[0], evalExpr)
+				output, err := prog.Eval(evalExpr)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "error: %v\n", err)
 					return fmt.Errorf("eval failed")
@@ -28,13 +36,6 @@ func buildCommand() *cobra.Command {
 				return nil
 			}
 
-			prog, errs := comp.Parse(args[0])
-			if len(errs) > 0 {
-				for _, e := range errs {
-					fmt.Fprintf(os.Stderr, "error: %v\n", e)
-				}
-				return fmt.Errorf("compilation failed with %d error(s)", len(errs))
-			}
 			fmt.Print(prog.Render())
 			return nil
 		},
