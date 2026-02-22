@@ -78,13 +78,15 @@ func (c *Composer) declRequests(decl ast.Declaration) []Request {
 		}
 
 		// Check target symbols first, then external (host) symbols.
+		// Search both target and reference paths for code/doc resolution.
 		if kind, isTarget := c.targetSymbols[ref.Name]; isTarget {
 			r.IsExternal = true
 			r.Kind = kind
 			r.Signature = c.targetSigs[ref.Name]
+			allPaths := append(c.targetPaths, c.referencePaths...)
 			if c.targetResolver != nil {
 				if ref.AppendCode {
-					for _, path := range c.targetPaths {
+					for _, path := range allPaths {
 						if code, ok := c.targetResolver.GetCode(path, ref.Name); ok {
 							r.ResolvedCode = code
 							break
@@ -92,7 +94,7 @@ func (c *Composer) declRequests(decl ast.Declaration) []Request {
 					}
 				}
 				if ref.AppendDoc {
-					for _, path := range c.targetPaths {
+					for _, path := range allPaths {
 						if doc, ok := c.targetResolver.GetDoc(path, ref.Name); ok {
 							r.ResolvedDoc = doc
 							break

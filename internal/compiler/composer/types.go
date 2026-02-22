@@ -100,9 +100,10 @@ type Composer struct {
 	declared map[string]ast.Declaration
 
 	// targetSymbols and targetSigs are populated from target files during validation.
-	targetSymbols map[string]ast.SymbolKind
-	targetSigs    map[string]string
-	targetPaths   []string // resolved target file paths
+	targetSymbols  map[string]ast.SymbolKind
+	targetSigs     map[string]string
+	targetPaths    []string // resolved target file paths
+	referencePaths []string // resolved reference file paths (not in status output)
 }
 
 // New creates a new Composer.

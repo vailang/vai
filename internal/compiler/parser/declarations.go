@@ -6,26 +6,33 @@ import (
 )
 
 // parsePrompt parses a prompt definition.
-// Syntax: prompt name { body }
+// Syntax: prompt name { reference "path" ... body }
 func (p *Parser) parsePrompt() *ast.PromptDecl {
 	pos := tokenPos(p.current)
 	p.expect(lexer.PROMPT)
 
 	name := p.expect(lexer.IDENT)
 
+	// Collect reference declarations before the body.
+	var refs []string
+	for p.current.Type == lexer.REFERENCE {
+		refs = append(refs, p.parseReference())
+	}
+
 	p.expect(lexer.LBRACE)
 	body := p.parseBody()
 	p.expect(lexer.RBRACE)
 
 	return &ast.PromptDecl{
-		Name: name.Val,
-		Body: body,
-		Pos:  pos,
+		Name:       name.Val,
+		Body:       body,
+		References: refs,
+		Pos:        pos,
 	}
 }
 
 // parseConstraint parses a constraint block with an optional name and free text body.
-// Syntax: constraint name { free text } or constraint { free text }
+// Syntax: constraint name { body } or constraint { body }
 func (p *Parser) parseConstraint() *ast.ConstraintDecl {
 	pos := tokenPos(p.current)
 	p.expect(lexer.CONSTRAINT)
@@ -47,15 +54,23 @@ func (p *Parser) parseConstraint() *ast.ConstraintDecl {
 }
 
 // parseInject parses a standalone inject statement.
-// Syntax: inject name (name can be an identifier or keyword like "plan")
+// Syntax: inject name or inject plan.impl (name can be an identifier or keyword)
 func (p *Parser) parseInject() *ast.InjectDecl {
 	pos := tokenPos(p.current)
 	p.expect(lexer.INJECT)
 
 	name := p.expectName()
+	fullName := name.Val
+
+	// Check for dotted name: inject plan.impl
+	if p.current.Type == lexer.DOT {
+		p.advance() // consume .
+		part := p.expectName()
+		fullName = fullName + "." + part.Val
+	}
 
 	return &ast.InjectDecl{
-		Name: name.Val,
+		Name: fullName,
 		Pos:  pos,
 	}
 }
@@ -76,22 +91,22 @@ func (p *Parser) parseSpec() *ast.SpecDecl {
 	}
 }
 
-// parseImpl parses an impl block with a signature string and body.
-// Syntax: impl "signature" { body }
+// parseImpl parses an impl block with a name identifier and body.
+// Syntax: impl name { body }
 func (p *Parser) parseImpl() *ast.ImplDecl {
 	pos := tokenPos(p.current)
 	p.expect(lexer.IMPL)
 
-	sig := unquote(p.expect(lexer.STRING).Val)
+	name := p.expect(lexer.IDENT)
 
 	p.expect(lexer.LBRACE)
 	body := p.parseBody()
 	p.expect(lexer.RBRACE)
 
 	return &ast.ImplDecl{
-		Signature: sig,
-		Body:      body,
-		Pos:       pos,
+		Name: name.Val,
+		Body: body,
+		Pos:  pos,
 	}
 }
 
@@ -102,6 +117,21 @@ func (p *Parser) parseTarget() string {
 
 	if p.current.Type != lexer.STRING {
 		p.errorf("expected string after 'target', got %s", p.current.Type)
+		return ""
+	}
+
+	path := unquote(p.current.Val)
+	p.advance()
+	return path
+}
+
+// parseReference parses a reference path.
+// Syntax: reference "path/to/file"
+func (p *Parser) parseReference() string {
+	p.expect(lexer.REFERENCE)
+
+	if p.current.Type != lexer.STRING {
+		p.errorf("expected string after 'reference', got %s", p.current.Type)
 		return ""
 	}
 
@@ -141,6 +171,8 @@ func (p *Parser) parsePlan() *ast.PlanDecl {
 			decl.Declarations = append(decl.Declarations, p.parseInject())
 		case lexer.TARGET:
 			decl.Targets = append(decl.Targets, p.parseTarget())
+		case lexer.REFERENCE:
+			decl.References = append(decl.References, p.parseReference())
 		default:
 			p.errorf("unexpected token inside plan: %s (%q)", p.current.Type, p.current.Val)
 			p.synchronize()

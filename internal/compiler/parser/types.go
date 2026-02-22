@@ -90,7 +90,7 @@ func (p *Parser) errorf(format string, args ...any) {
 func (p *Parser) synchronize() {
 	for p.current.Type != lexer.EOF && p.current.Type != lexer.ILLEGAL {
 		switch p.current.Type {
-		case lexer.PROMPT, lexer.PLAN, lexer.CONSTRAINT, lexer.INJECT, lexer.SPEC, lexer.IMPL, lexer.TARGET:
+		case lexer.PROMPT, lexer.PLAN, lexer.CONSTRAINT, lexer.INJECT, lexer.SPEC, lexer.IMPL, lexer.TARGET, lexer.REFERENCE:
 			return
 		}
 		p.advance()
@@ -144,7 +144,7 @@ func (p *Parser) ParseFile() (*ast.File, []Error) {
 			file.Declarations = append(file.Declarations, p.parseInject())
 		case lexer.PLAN:
 			file.Declarations = append(file.Declarations, p.parsePlan())
-		case lexer.SPEC, lexer.IMPL, lexer.TARGET:
+		case lexer.SPEC, lexer.IMPL, lexer.TARGET, lexer.REFERENCE:
 			p.errorf("%s is only valid inside a plan block", p.current.Type)
 			p.advance()
 			if p.current.Type == lexer.LBRACE {

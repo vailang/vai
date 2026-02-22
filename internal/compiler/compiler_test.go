@@ -92,10 +92,12 @@ func TestCompilerParseError(t *testing.T) {
 func TestCompilerTaskCount(t *testing.T) {
 	source := `
 	plan MyPlan {
+		target "src/main.go"
 		spec {
 			Build a todo app
 		}
-		impl "func add()" {
+		impl add {
+			[target "src/main.go"]
 			Add a new item
 		}
 	}

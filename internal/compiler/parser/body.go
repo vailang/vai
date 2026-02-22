@@ -39,6 +39,13 @@ func (p *Parser) parseBody() []ast.BodySegment {
 			})
 			p.advance()
 
+		case lexer.REFERENCE_REF:
+			segments = append(segments, &ast.ReferenceRefSegment{
+				Name: p.current.Val,
+				Pos:  tokenPos(p.current),
+			})
+			p.advance()
+
 		case lexer.MATCH_REF:
 			seg := p.parseMatchBlock()
 			if seg != nil {

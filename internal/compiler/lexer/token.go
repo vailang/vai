@@ -17,12 +17,13 @@ const (
 
 	// Body mode tokens
 	body_beg
-	TEXT       // Raw text inside body mode
-	USE_REF    // [use identifier] inside body mode
-	INJECT_REF // [inject name] inside body mode
-	MATCH_REF  // [match field] inside body mode
-	CASE_REF   // [case "value"] or [case _] inside body mode
-	TARGET_REF // [target "path"] inside body mode
+	TEXT          // Raw text inside body mode
+	USE_REF       // [use identifier] inside body mode
+	INJECT_REF    // [inject name] inside body mode
+	MATCH_REF     // [match field] inside body mode
+	CASE_REF      // [case "value"] or [case _] inside body mode
+	TARGET_REF    // [target "path"] inside body mode
+	REFERENCE_REF // [reference "path"] inside body mode
 	body_end
 
 	// Operators and delimiters (grouped by range markers)
@@ -31,6 +32,7 @@ const (
 	RBRACE // }
 	LBRACK // [
 	RBRACK // ]
+	DOT    // .
 	operator_end
 
 	// Keywords (grouped by range markers)
@@ -42,6 +44,7 @@ const (
 	SPEC       // spec (natural language description inside plan)
 	IMPL       // impl (implementation block inside plan)
 	TARGET     // target (output file path inside plan)
+	REFERENCE  // reference (symbol source for [use] resolution, not emitted in status)
 	keyword_end
 )
 
@@ -54,6 +57,7 @@ var keywords = map[string]Token{
 	"spec":       SPEC,
 	"impl":       IMPL,
 	"target":     TARGET,
+	"reference":  REFERENCE,
 }
 
 // tokens maps Token types to their string representation for debugging.
@@ -69,13 +73,15 @@ var tokens = [...]string{
 	USE_REF:    "USE_REF",
 	INJECT_REF: "INJECT_REF",
 	MATCH_REF:  "MATCH_REF",
-	CASE_REF:   "CASE_REF",
-	TARGET_REF: "TARGET_REF",
+	CASE_REF:      "CASE_REF",
+	TARGET_REF:    "TARGET_REF",
+	REFERENCE_REF: "REFERENCE_REF",
 
 	LBRACE: "LBRACE",
 	RBRACE: "RBRACE",
 	LBRACK: "LBRACK",
 	RBRACK: "RBRACK",
+	DOT:    "DOT",
 
 	PROMPT:     "PROMPT",
 	INJECT:     "INJECT",
@@ -84,6 +90,7 @@ var tokens = [...]string{
 	SPEC:       "SPEC",
 	IMPL:       "IMPL",
 	TARGET:     "TARGET",
+	REFERENCE:  "REFERENCE",
 }
 
 // IsBodyKeyword returns true if the token is a keyword that expects a body block

@@ -42,7 +42,7 @@ func TestParsePlanWithImpl(t *testing.T) {
   spec {
     Build an authentication system.
   }
-  impl "int main()" {
+  impl main {
     [target "src/auth.c"]
     [inject login]
   }
@@ -58,8 +58,8 @@ func TestParsePlanWithImpl(t *testing.T) {
 		t.Fatalf("expected 1 impl, got %d", len(pd.Impls))
 	}
 	impl := pd.Impls[0]
-	if impl.Signature != "int main()" {
-		t.Errorf("impl signature = %q, want 'int main()'", impl.Signature)
+	if impl.Name != "main" {
+		t.Errorf("impl name = %q, want 'main'", impl.Name)
 	}
 	if len(impl.Body) != 2 {
 		t.Fatalf("expected 2 impl body segments, got %d", len(impl.Body))

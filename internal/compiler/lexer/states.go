@@ -45,6 +45,8 @@ func lexText(l *Lexer) stateFn {
 			l.emit(LBRACK)
 		case r == ']':
 			l.emit(RBRACK)
+		case r == '.':
+			l.emit(DOT)
 		case isAlphaNumeric(r) || r == '_':
 			l.backup()
 			return lexIdentifier

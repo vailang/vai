@@ -57,6 +57,16 @@ type TargetRefSegment struct {
 func (*TargetRefSegment) bodySegment()           {}
 func (s *TargetRefSegment) SegmentPos() Position { return s.Pos }
 
+// ReferenceRefSegment represents [reference "path"] inside a body.
+// Like TargetRefSegment but for symbol resolution only (not emitted in status output).
+type ReferenceRefSegment struct {
+	Name string // "lib.rs", "utils.py"
+	Pos  Position
+}
+
+func (*ReferenceRefSegment) bodySegment()           {}
+func (s *ReferenceRefSegment) SegmentPos() Position { return s.Pos }
+
 // MatchSegment represents [match field] { [case "val"] { body } ... } inside a body.
 type MatchSegment struct {
 	Field string        // "user.language"
@@ -114,10 +124,11 @@ func (*ConstraintDecl) GetDirectives() []Directive      { return nil }
 // PromptDecl represents a reusable prompt definition.
 // Syntax: prompt name { body }
 type PromptDecl struct {
-	Name      string
-	Body      []BodySegment
-	IsPrivate bool
-	Pos       Position
+	Name       string
+	Body       []BodySegment
+	References []string // reference "path" declarations
+	IsPrivate  bool
+	Pos        Position
 }
 
 func (*PromptDecl) node()                        {}
@@ -160,15 +171,15 @@ func (*SpecDecl) GetDirectives() []Directive      { return nil }
 // ---------------------------------------------------------------------------
 
 // ImplDecl represents an impl block inside a plan.
-// Syntax: impl "signature" { body }
+// Syntax: impl name { body }
 type ImplDecl struct {
-	Signature string // "int main()"
-	Body      []BodySegment
-	Pos       Position
+	Name string // symbol name to implement (e.g. "main", "add")
+	Body []BodySegment
+	Pos  Position
 }
 
 func (*ImplDecl) node()                        {}
-func (i *ImplDecl) DeclName() string             { return "_impl" }
+func (i *ImplDecl) DeclName() string             { return i.Name }
 func (*ImplDecl) GetDirectives() []Directive      { return nil }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +195,7 @@ type PlanDecl struct {
 	Specs        []*SpecDecl
 	Impls        []*ImplDecl
 	Targets      []string // target "path" declarations
+	References   []string // reference "path" declarations (symbol source, not in status)
 	Pos          Position
 }
 

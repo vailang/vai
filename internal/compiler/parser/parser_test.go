@@ -80,7 +80,7 @@ func TestFullExample(t *testing.T) {
 				see good film!
 			}
 
-			impl "int main()" {
+			impl main {
 				[target "life.c"]
 				[inject handler]
 				[use life]
@@ -179,8 +179,8 @@ func TestFullExample(t *testing.T) {
 
 	// Check impl
 	impl := pd.Impls[0]
-	if impl.Signature != "int main()" {
-		t.Errorf("impl signature = %q, want 'int main()'", impl.Signature)
+	if impl.Name != "main" {
+		t.Errorf("impl name = %q, want 'main'", impl.Name)
 	}
 	// impl body: [target "life.c"], [inject handler], [use life]
 	if len(impl.Body) != 3 {

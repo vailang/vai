@@ -60,10 +60,13 @@ func (c *Composer) Validate() []Error {
 	return c.errors
 }
 
-// resolveTargets discovers all target files from the AST and loads their symbols.
+// resolveTargets discovers all target and reference files from the AST and loads their symbols.
 // Targets are found in: File.TargetPath, PlanDecl.Targets, and [target "path"]
-// directives inside any body segment. Each file is loaded once via the
-// TargetResolver (which caches internally).
+// directives inside any body segment. References are found in: PlanDecl.References,
+// PromptDecl.References, and [reference "path"] directives.
+// Each file is loaded once via the TargetResolver (which caches internally).
+// Reference symbols are merged into the same lookup maps but tracked separately
+// so they are NOT included in status output.
 func (c *Composer) resolveTargets() {
 	if c.targetResolver == nil {
 		return
@@ -71,8 +74,10 @@ func (c *Composer) resolveTargets() {
 
 	c.targetSymbols = map[string]ast.SymbolKind{}
 	c.targetSigs = map[string]string{}
+	c.referencePaths = nil
 
 	seen := map[string]bool{}
+	refSeen := map[string]bool{}
 	for _, file := range c.src.Files() {
 		baseDir := filepath.Dir(file.SourcePath)
 		resolve := func(target string) string {
@@ -94,7 +99,7 @@ func (c *Composer) resolveTargets() {
 			}
 		}
 
-		// Plan-level targets + body-level [target "path"] directives.
+		// Plan-level targets + references, body-level [target] and [reference] directives.
 		for _, decl := range file.Declarations {
 			if pd, ok := decl.(*ast.PlanDecl); ok {
 				for _, target := range pd.Targets {
@@ -104,14 +109,52 @@ func (c *Composer) resolveTargets() {
 						c.targetPaths = append(c.targetPaths, abs)
 					}
 				}
+				for _, ref := range pd.References {
+					abs := resolve(ref)
+					if !refSeen[abs] {
+						refSeen[abs] = true
+						c.referencePaths = append(c.referencePaths, abs)
+					}
+				}
 			}
-			// Walk all body segments to find [target] directives.
+			// Collect references from prompt/constraint declarations.
+			if pd, ok := decl.(*ast.PromptDecl); ok {
+				for _, ref := range pd.References {
+					abs := resolve(ref)
+					if !refSeen[abs] {
+						refSeen[abs] = true
+						c.referencePaths = append(c.referencePaths, abs)
+					}
+				}
+			}
+			// Walk all body segments to find [target] and [reference] directives.
 			ast.WalkBodySegments(decl, func(seg ast.BodySegment) {
-				if tr, ok := seg.(*ast.TargetRefSegment); ok {
-					abs := resolve(tr.Name)
+				switch s := seg.(type) {
+				case *ast.TargetRefSegment:
+					abs := resolve(s.Name)
 					if !seen[abs] {
 						seen[abs] = true
 						c.targetPaths = append(c.targetPaths, abs)
+					}
+				case *ast.ReferenceRefSegment:
+					// Check if this is a plan name reference — import its targets as references.
+					if planDecl, found := c.declared[s.Name]; found {
+						if pd, isPlan := planDecl.(*ast.PlanDecl); isPlan {
+							for _, target := range pd.Targets {
+								abs := resolve(target)
+								if !refSeen[abs] {
+									refSeen[abs] = true
+									c.referencePaths = append(c.referencePaths, abs)
+								}
+							}
+							return
+						}
+					}
+					// Otherwise treat as a file path.
+					abs := resolve(s.Name)
+					if !refSeen[abs] {
+						refSeen[abs] = true
+						c.referencePaths = append(c.referencePaths, abs)
 					}
 				}
 			})
@@ -123,6 +166,21 @@ func (c *Composer) resolveTargets() {
 		symbols, sigs, err := c.targetResolver.ResolveTarget(path)
 		if err != nil {
 			c.errorf(ast.Position{}, "target %q: %s", path, err)
+			continue
+		}
+		for name, kind := range symbols {
+			c.targetSymbols[name] = kind
+		}
+		for name, sig := range sigs {
+			c.targetSigs[name] = sig
+		}
+	}
+
+	// Resolve each reference file (symbols merged into same maps for [use] resolution).
+	for _, path := range c.referencePaths {
+		symbols, sigs, err := c.targetResolver.ResolveTarget(path)
+		if err != nil {
+			c.errorf(ast.Position{}, "reference %q: %s", path, err)
 			continue
 		}
 		for name, kind := range symbols {
@@ -186,18 +244,59 @@ func (c *Composer) validateDeclBody(decl ast.Declaration) {
 		for _, spec := range d.Specs {
 			c.validateSegments(spec.Body, nil)
 		}
+		// Build set of plan targets for impl validation.
+		planTargets := map[string]bool{}
+		for _, t := range d.Targets {
+			planTargets[t] = true
+		}
+
 		seenImpls := map[string]ast.Position{}
 		for _, impl := range d.Impls {
 			c.validateSegments(impl.Body, nil)
-			if prev, dup := seenImpls[impl.Signature]; dup {
-				c.errorf(impl.Pos, "duplicate impl %q in plan %q (first at %d:%d)", impl.Signature, d.Name, prev.Line, prev.Column)
+			if prev, dup := seenImpls[impl.Name]; dup {
+				c.errorf(impl.Pos, "duplicate impl %q in plan %q (first at %d:%d)", impl.Name, d.Name, prev.Line, prev.Column)
 			} else {
-				seenImpls[impl.Signature] = impl.Pos
+				seenImpls[impl.Name] = impl.Pos
+			}
+
+			// Validate impl has exactly one [target] that is in the plan's targets.
+			var implTargets []*ast.TargetRefSegment
+			for _, seg := range impl.Body {
+				if tr, ok := seg.(*ast.TargetRefSegment); ok {
+					implTargets = append(implTargets, tr)
+				}
+			}
+			if len(implTargets) == 0 {
+				c.errorf(impl.Pos, "impl %q: [target] is required", impl.Name)
+			} else if len(implTargets) > 1 {
+				c.errorf(implTargets[1].Pos, "impl %q: only one [target] allowed", impl.Name)
+			} else if !planTargets[implTargets[0].Name] {
+				c.errorf(implTargets[0].Pos, "impl %q: target %q is not declared in plan %q", impl.Name, implTargets[0].Name, d.Name)
 			}
 		}
 
+	case *ast.PromptDecl:
+		// Forbid [target] in prompts — use [reference] instead.
+		ast.WalkBodySegments(decl, func(seg ast.BodySegment) {
+			if tr, ok := seg.(*ast.TargetRefSegment); ok {
+				c.errorf(tr.Pos, "[target] is not allowed in prompt declarations; use [reference] instead")
+				return
+			}
+			c.validateSegment(seg, nil)
+		})
+
+	case *ast.ConstraintDecl:
+		// Forbid [target] in constraints — use [reference] instead.
+		ast.WalkBodySegments(decl, func(seg ast.BodySegment) {
+			if tr, ok := seg.(*ast.TargetRefSegment); ok {
+				c.errorf(tr.Pos, "[target] is not allowed in constraint declarations; use [reference] instead")
+				return
+			}
+			c.validateSegment(seg, nil)
+		})
+
 	default:
-		// PromptDecl, ConstraintDecl, SpecDecl, InjectPromptDecl — no local names.
+		// SpecDecl, InjectPromptDecl — no local names.
 		ast.WalkBodySegments(decl, func(seg ast.BodySegment) {
 			c.validateSegment(seg, nil)
 		})
@@ -282,19 +381,46 @@ func (c *Composer) validateUseRef(ref *ast.UseRefSegment, locals map[string]bool
 	}
 }
 
-// validateInjectRef checks that an [inject X] reference points to a prompt.
+// validateInjectRef checks that an [inject X] reference points to a prompt, plan, or plan.impl.
 func (c *Composer) validateInjectRef(ref *ast.InjectRefSegment) {
-	// Qualified paths (e.g. "module.PromptName") — validate against known prompts if available.
+	// Qualified paths (e.g. "module.PromptName" or "plan.implName").
 	if strings.Contains(ref.Path, ".") {
+		// Standard library prompts.
 		if c.knownPrompts != nil && strings.HasPrefix(ref.Path, "std.") {
 			if !c.knownPrompts[ref.Path] {
 				c.errorf(ref.Pos, "[inject %s]: prompt '%s' does not exist", ref.Path, ref.Path)
+			}
+			return
+		}
+		// Check for plan.impl pattern — only validate if the first part is a known declaration.
+		parts := strings.SplitN(ref.Path, ".", 2)
+		if len(parts) == 2 {
+			planDecl, found := c.declared[parts[0]]
+			if !found {
+				// Not a known declaration — might be an external module, skip validation.
+				return
+			}
+			plan, ok := planDecl.(*ast.PlanDecl)
+			if !ok {
+				c.errorf(ref.Pos, "[inject %s]: '%s' is not a plan declaration", ref.Path, parts[0])
+				return
+			}
+			// Check that the plan has an impl with that name.
+			implFound := false
+			for _, impl := range plan.Impls {
+				if impl.Name == parts[1] {
+					implFound = true
+					break
+				}
+			}
+			if !implFound {
+				c.errorf(ref.Pos, "[inject %s]: plan '%s' has no impl '%s'", ref.Path, parts[0], parts[1])
 			}
 		}
 		return
 	}
 
-	// Local path — must resolve to a PromptDecl.
+	// Local path — must resolve to a PromptDecl or PlanDecl.
 	decl, found := c.declared[ref.Path]
 	if !found {
 		c.errorf(ref.Pos, "[inject %s]: '%s' is not declared", ref.Path, ref.Path)

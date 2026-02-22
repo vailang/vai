@@ -173,6 +173,34 @@ func (bc *bodyContext) lexTargetDirective(l *Lexer) {
 	bc.emitDirective(l, TARGET_REF, path.String())
 }
 
+// lexReferenceDirective handles [reference "path"] and [reference plan_name] directives.
+func (bc *bodyContext) lexReferenceDirective(l *Lexer) {
+	bc.flushText(l)
+	for range len("reference") {
+		l.next()
+	}
+	bc.skipWhitespace(l)
+	var val string
+	if l.peek() == '"' {
+		// Quoted string: [reference "path/to/file"]
+		var path strings.Builder
+		l.next() // consume opening "
+		for {
+			pr := l.next()
+			if pr == '"' || pr == eof {
+				break
+			}
+			path.WriteRune(pr)
+		}
+		val = path.String()
+	} else {
+		// Bare identifier: [reference plan_name]
+		val = bc.readIdentWithDots(l)
+	}
+	bc.skipToClosingBracket(l)
+	bc.emitDirective(l, REFERENCE_REF, val)
+}
+
 // lexMatchDirective handles [match field] directives.
 func (bc *bodyContext) lexMatchDirective(l *Lexer) {
 	bc.flushText(l)
@@ -284,6 +312,9 @@ func lexBody(l *Lexer) stateFn {
 				continue
 			case "target":
 				bc.lexTargetDirective(l)
+				continue
+			case "reference":
+				bc.lexReferenceDirective(l)
 				continue
 			case "match":
 				bc.lexMatchDirective(l)
