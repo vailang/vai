@@ -49,6 +49,7 @@ func (p *program) Eval(source string) (string, error) {
 	cs := reader.NewVaiSource(source)
 	scanner := lexer.NewScanner(cs)
 	par := parser.New(scanner)
+	par.SetEvalMode(true)
 	evalFile, errs := par.ParseFile()
 	if len(errs) > 0 {
 		msgs := make([]string, len(errs))

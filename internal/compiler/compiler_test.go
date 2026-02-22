@@ -20,11 +20,10 @@ func TestCompilerPrompt(t *testing.T) {
 	source := `prompt greet {
 	Hello, World!
 	}
-	inject greet
 	`
 
 	prog := compileSource(t, source)
-	result, err := prog.Exec()
+	result, err := prog.Eval("inject greet")
 	if err != nil {
 		t.Fatalf("unexpected execution error: %v", err)
 	}
@@ -37,12 +36,11 @@ func TestCompilerNilCoder(t *testing.T) {
 	source := `prompt base {
 	You are a helpful assistant.
 	}
-	inject base
 	`
 
 	prog := compileSource(t, source)
 	if prog.Tasks() != 0 {
-		t.Errorf("expected 0 tasks for prompt+inject only, got %d", prog.Tasks())
+		t.Errorf("expected 0 tasks for prompt only, got %d", prog.Tasks())
 	}
 }
 
@@ -53,12 +51,10 @@ func TestCompilerMultipleInjects(t *testing.T) {
 	prompt farewell {
 	Goodbye!
 	}
-	inject greeting
-	inject farewell
 	`
 
 	prog := compileSource(t, source)
-	result, err := prog.Exec()
+	result, err := prog.Eval("inject greeting\ninject farewell")
 	if err != nil {
 		t.Fatalf("unexpected execution error: %v", err)
 	}
@@ -114,7 +110,7 @@ func TestCompilerMultiFile(t *testing.T) {
 		"/project/prompts.vai": `prompt base {
 	You are helpful.
 	}`,
-		"/project/main.vai": `inject base`,
+		"/project/main.vai": ``,
 	}
 
 	c := &compiler{}
@@ -122,7 +118,7 @@ func TestCompilerMultiFile(t *testing.T) {
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
-	result, err := prog.Exec()
+	result, err := prog.Eval("inject base")
 	if err != nil {
 		t.Fatalf("unexpected execution error: %v", err)
 	}

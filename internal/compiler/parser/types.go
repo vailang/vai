@@ -30,6 +30,7 @@ type Parser struct {
 	current   lexer.TokenInfo
 	lookahead lexer.TokenInfo
 	errors    []Error
+	evalMode  bool // when true, top-level inject is kept in declarations
 }
 
 // New creates a new Parser for the given token streams.
@@ -97,6 +98,9 @@ func (p *Parser) synchronize() {
 	}
 }
 
+// SetEvalMode enables eval mode — top-level inject is kept in declarations.
+func (p *Parser) SetEvalMode(v bool) { p.evalMode = v }
+
 // tokenPos converts a TokenInfo to an ast.Position.
 func tokenPos(tok lexer.TokenInfo) ast.Position {
 	return ast.Position{
@@ -141,7 +145,10 @@ func (p *Parser) ParseFile() (*ast.File, []Error) {
 		case lexer.PROMPT:
 			file.Declarations = append(file.Declarations, p.parsePrompt())
 		case lexer.INJECT:
-			file.Declarations = append(file.Declarations, p.parseInject())
+			decl := p.parseInject()
+			if p.evalMode {
+				file.Declarations = append(file.Declarations, decl)
+			}
 		case lexer.PLAN:
 			file.Declarations = append(file.Declarations, p.parsePlan())
 		case lexer.SPEC, lexer.IMPL, lexer.TARGET, lexer.REFERENCE:

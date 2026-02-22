@@ -90,9 +90,9 @@ func TestFullExample(t *testing.T) {
 		inject my_hero_plan
 	`)
 
-	// Should have: constraint, prompt, inject, plan, inject = 5 declarations
-	if len(file.Declarations) != 5 {
-		t.Fatalf("expected 5 declarations, got %d", len(file.Declarations))
+	// Top-level inject is silently discarded: constraint, prompt, plan = 3 declarations
+	if len(file.Declarations) != 3 {
+		t.Fatalf("expected 3 declarations, got %d", len(file.Declarations))
 	}
 
 	// 1. constraint life_handler
@@ -141,19 +141,10 @@ func TestFullExample(t *testing.T) {
 		t.Errorf("case[2] = %q, want '_' (default)", matchSeg.Cases[2].Value)
 	}
 
-	// 3. inject greet
-	inj, ok := file.Declarations[2].(*ast.InjectDecl)
+	// 3. plan my_hero_plan
+	pd, ok := file.Declarations[2].(*ast.PlanDecl)
 	if !ok {
-		t.Fatalf("expected InjectDecl, got %T", file.Declarations[2])
-	}
-	if inj.Name != "greet" {
-		t.Errorf("inject name = %q, want 'greet'", inj.Name)
-	}
-
-	// 4. plan my_hero_plan
-	pd, ok := file.Declarations[3].(*ast.PlanDecl)
-	if !ok {
-		t.Fatalf("expected PlanDecl, got %T", file.Declarations[3])
+		t.Fatalf("expected PlanDecl, got %T", file.Declarations[2])
 	}
 	if pd.Name != "my_hero_plan" {
 		t.Errorf("plan name = %q, want 'my_hero_plan'", pd.Name)
@@ -192,14 +183,5 @@ func TestFullExample(t *testing.T) {
 	}
 	if targetRef.Name != "life.c" {
 		t.Errorf("target ref = %q, want 'life.c'", targetRef.Name)
-	}
-
-	// 5. inject my_hero_plan
-	inj2, ok := file.Declarations[4].(*ast.InjectDecl)
-	if !ok {
-		t.Fatalf("expected InjectDecl, got %T", file.Declarations[4])
-	}
-	if inj2.Name != "my_hero_plan" {
-		t.Errorf("inject name = %q, want 'my_hero_plan'", inj2.Name)
 	}
 }
