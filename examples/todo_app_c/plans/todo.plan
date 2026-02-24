@@ -1,0 +1,62 @@
+plan todo {
+    target "src/todo.c"
+    spec {
+        Simple in-memory todo app. Single file with main().
+        CLI menu loop: add, list, complete, delete, quit.
+        Fixed array of 100 todos. Each todo has id, title (256 chars), completed flag.
+        Print menu, read choice, dispatch. Loop until quit.
+    }
+    constraint {
+        Use strncpy never strcpy.
+        Check all array bounds.
+        Errors to stderr.
+        C99 standard only.
+    }
+
+    impl print_menu {
+        [target "src/todo.c"]
+        Print a blank line, then 'Todo Menu:', then each option on its own line: '1) Add', '2) List', '3) Complete', '4) Delete', '5) Quit'. All output via printf to stdout.
+    }
+
+    impl add_todo {
+        [target "src/todo.c"]
+        Check if *count >= MAX_TODOS; if so fprintf to stderr 'Error: todo list is full.\n' and return. Otherwise printf 'Enter title: ', call fgets into a local char buf[TITLE_LEN] from stdin. Strip trailing newline: use strchr(buf, '\n') and if found replace with '\0'. Use strncpy to copy buf into todos[*count].title, then explicitly null-terminate todos[*count].title[TITLE_LEN-1] = '\0'. Set todos[*count].id = *count + 1, todos[*count].completed = 0. Increment *count. Print 'Added todo #<id>.\n' using the new id.
+        [use Todo]
+        [use MAX_TODOS]
+        [use TITLE_LEN]
+    }
+
+    impl list_todos {
+        [target "src/todo.c"]
+        If count == 0, printf 'No todos.\n' and return. Otherwise loop i from 0 to count-1 and printf '[%d] %s (done: %s)\n' using todos[i].id, todos[i].title, and (todos[i].completed ? "yes" : "no").
+        [use Todo]
+    }
+
+    impl complete_todo {
+        [target "src/todo.c"]
+        printf 'Enter id to mark complete: '. Declare int id and read it with scanf("%d", &id), then consume remaining input by reading chars in a while loop until the char equals '\n' or EOF. Loop i from 0 to count-1 looking for todos[i].id == id. If not found after the loop, fprintf to stderr 'Error: todo #<id> not found.\n' and return. If found and todos[i].completed is already 1, printf 'Todo #<id> is already completed.\n'. Otherwise set todos[i].completed = 1 and printf 'Marked todo #<id> as complete.\n'.
+        [use Todo]
+    }
+
+    impl delete_todo {
+        [target "src/todo.c"]
+        printf 'Enter id to delete: '. Declare int id and read it with scanf("%d", &id), then consume remaining input by reading chars in a while loop until the char equals '\n' or EOF. Loop i from 0 to *count-1 to find the index where todos[i].id == id. If not found after the loop, fprintf to stderr 'Error: todo #<id> not found.\n' and return. Remove the entry by calling memmove(&todos[i], &todos[i+1], (*count - i - 1) * sizeof(Todo)). Decrement *count. printf 'Deleted todo #<id>.\n'.
+        [use Todo]
+    }
+
+    impl main {
+        [target "src/todo.c"]
+        Declare 'Todo todos[MAX_TODOS]' and 'int count = 0' and 'int choice'. Enter an infinite for(;;) loop. Each iteration: call print_menu(), then read choice with scanf("%d", &choice) and consume remaining input by reading chars in a while loop until the char equals '\n' or EOF. Switch on choice: case 1 calls add_todo(todos, &count); case 2 calls list_todos(todos, count); case 3 calls complete_todo(todos, count); case 4 calls delete_todo(todos, &count); case 5 printf 'Goodbye.\n' and return 0; default fprintf to stderr 'Invalid choice.\n'. Continue loop.
+        [use Todo]
+        [use MAX_TODOS]
+        [use print_menu]
+        [use add_todo]
+        [use list_todos]
+        [use complete_todo]
+        [use delete_todo]
+    }
+}
+
+
+
+

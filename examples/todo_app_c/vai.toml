@@ -1,0 +1,24 @@
+[lib]
+name = "todo_app_c"
+prompts = "plans"
+
+[planner]
+provider = "anthropic"
+model = "claude-sonnet-4-6"
+max_tokens = 8000
+max_retries = 2
+delay_retry_seconds = 2
+
+[executor]
+provider = "anthropic"
+model = "claude-haiku-4-5"
+max_tokens = 4000
+max_retries = 3
+delay_retry_seconds = 1
+
+[debug]
+max_attempts = 5
+
+[debug.languages.c]
+compile_check = "gcc -Wall -Werror -o /tmp/vai_todo {target}"
+tools = []

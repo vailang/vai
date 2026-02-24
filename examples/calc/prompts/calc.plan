@@ -1,0 +1,45 @@
+
+
+
+plan calc {
+    target "src/main.rs"
+    spec {
+        Create an interactive calculator that can perform basic arithmetic operations 
+        (addition, subtraction, multiplication, division) and handle user input. 
+        The calculator should be able to display results and allow users to perform multiple 
+        calculations in a session.
+    }
+
+    impl fmt::Display for CalcError {
+        [target "src/main.rs"]
+        Match on self and write a human-readable message: CalcError::DivisionByZero => write!(f, "Error: Division by zero"), CalcError::InvalidOperator(c) => write!(f, "Error: Invalid operator '{}'", c), CalcError::ParseError(s) => write!(f, "Error: Parse error - {}", s).
+        [use CalcError]
+    }
+
+    impl calculate {
+        [target "src/main.rs"]
+        Match on `op` and perform the arithmetic: '+' => Ok(a + b), '-' => Ok(a - b), '*' => Ok(a * b), '/' => if b == 0.0 return Err(CalcError::DivisionByZero) else Ok(a / b), any other char => Err(CalcError::InvalidOperator(op)).
+        [use CalcError]
+    }
+
+    impl parse_input {
+        [target "src/main.rs"]
+        Trim the input string and split it on whitespace (split_whitespace) into a collected Vec. If the token count is not exactly 3, return Err(CalcError::ParseError("Expected format: <number> <op> <number>".to_string())). Parse tokens[0] as f64, mapping the error to CalcError::ParseError with the offending token string as the message. Parse tokens[2] as f64 the same way. Get the operator as the first char of tokens[1]; if tokens[1] is empty, return Err(CalcError::ParseError(tokens[1].to_string())). Return Ok((a, op, b)).
+        [use CalcError]
+    }
+
+    impl print_help {
+        [target "src/main.rs"]
+        Print a concise help message explaining: (1) the input format is '<number> <op> <number>', e.g. '3.5 + 2'; (2) supported operators are +, -, *, /; (3) special commands are 'help' (show this message) and 'quit'/'exit' (end the session).
+    }
+
+    impl main {
+        [target "src/main.rs"]
+        Run an interactive REPL: (1) Print a welcome banner then call print_help(). (2) Loop: print '> ' prompt and flush stdout (io::stdout().flush().unwrap()), read a line from stdin into a String, trim it to a &str. (3) If empty, continue. (4) If the lowercased value is 'quit' or 'exit', print a goodbye message and break. (5) If lowercased is 'help', call print_help() and continue. (6) Otherwise call parse_input() on the trimmed line; on Err print the CalcError via its Display impl and continue. On Ok((a, op, b)) call calculate(a, op, b); on Err print the CalcError; on Ok(result) print the formatted line '<a> <op> <b> = <result>'.
+        [use parse_input]
+        [use calculate]
+        [use print_help]
+        [use CalcError]
+    }
+}
+
