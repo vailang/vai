@@ -12,6 +12,11 @@ type Compiler interface {
 
 	// ParseSources compiles pre-loaded vai sources into a single program.
 	ParseSources(sources map[string]string) (Program, []error)
+
+	// SetBaseDir sets the project root for relative path resolution.
+	// When set, target/reference paths resolve relative to this directory
+	// instead of relative to each source file's directory.
+	SetBaseDir(dir string)
 }
 
 // Program represents a compiled vai program ready for inspection and execution.
@@ -21,6 +26,9 @@ type Program interface {
 	Exec() (string, error)               // Resolve all inject declarations
 	Eval(source string) (string, error)  // Evaluate vai source in this program's context
 	Render() string                      // Full structured markdown output
+
+	// Diagnostics
+	Warnings() []error                   // Non-fatal warnings from compilation
 
 	// Inspection
 	File() *ast.File                     // Merged AST

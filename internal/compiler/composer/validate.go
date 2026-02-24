@@ -79,7 +79,7 @@ func (c *Composer) resolveTargets() {
 	seen := map[string]bool{}
 	refSeen := map[string]bool{}
 	for _, file := range c.src.Files() {
-		baseDir := filepath.Dir(file.SourcePath)
+		fileDir := filepath.Dir(file.SourcePath)
 		resolve := func(target string) string {
 			if target == "" {
 				return ""
@@ -87,7 +87,10 @@ func (c *Composer) resolveTargets() {
 			if filepath.IsAbs(target) {
 				return target
 			}
-			return filepath.Join(baseDir, target)
+			if c.baseDir != "" {
+				return filepath.Join(c.baseDir, target)
+			}
+			return filepath.Join(fileDir, target)
 		}
 
 		// File-level target.
@@ -195,8 +198,18 @@ func (c *Composer) resolveTargets() {
 // errorf records a semantic error.
 func (c *Composer) errorf(pos ast.Position, format string, args ...any) {
 	c.errors = append(c.errors, Error{
-		Msg: fmt.Sprintf(format, args...),
-		Pos: pos,
+		Msg:      fmt.Sprintf(format, args...),
+		Pos:      pos,
+		Severity: SeverityError,
+	})
+}
+
+// warnf records a semantic warning (does not block compilation).
+func (c *Composer) warnf(pos ast.Position, format string, args ...any) {
+	c.errors = append(c.errors, Error{
+		Msg:      fmt.Sprintf(format, args...),
+		Pos:      pos,
+		Severity: SeverityWarning,
 	})
 }
 
@@ -267,7 +280,12 @@ func (c *Composer) validateDeclBody(decl ast.Declaration) {
 				}
 			}
 			if len(implTargets) == 0 {
-				c.errorf(impl.Pos, "impl %q: [target] is required", impl.Name)
+				if len(d.Targets) == 0 {
+					c.errorf(impl.Pos, "impl %q: [target] is required (plan has no targets)", impl.Name)
+				} else if len(d.Targets) > 1 {
+					c.errorf(impl.Pos, "impl %q: [target] is required when plan has multiple targets", impl.Name)
+				}
+				// single target → auto-inherit, no error
 			} else if len(implTargets) > 1 {
 				c.errorf(implTargets[1].Pos, "impl %q: only one [target] allowed", impl.Name)
 			} else if !planTargets[implTargets[0].Name] {
@@ -346,7 +364,7 @@ func (c *Composer) validateUseRef(ref *ast.UseRefSegment, locals map[string]bool
 				return // valid external symbol
 			}
 		}
-		c.errorf(ref.Pos, "[use %s]: '%s' is not declared", ref.Name, ref.Name)
+		c.warnf(ref.Pos, "[use %s]: '%s' is not declared", ref.Name, ref.Name)
 		return
 	}
 

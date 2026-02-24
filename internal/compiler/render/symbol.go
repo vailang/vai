@@ -1,7 +1,6 @@
 package render
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/vailang/vai/internal/compiler/ast"
@@ -62,7 +61,8 @@ func UseRef(
 		}
 	}
 
-	return "[use " + ref.Name + "]"
+	// Unresolved reference — render as empty (warning already emitted by composer).
+	return ""
 }
 
 // resolveAllTargets loads symbols from all known target and reference paths
@@ -81,41 +81,24 @@ func resolveAllTargets(
 	var allPaths []string
 	seen := map[string]bool{}
 
-	// Collect all target and reference paths from all plans and prompts.
-	for _, decl := range file.Declarations {
-		if pd, ok := decl.(*ast.PlanDecl); ok {
-			for _, t := range pd.Targets {
-				absPath := t
-				if !filepath.IsAbs(absPath) {
-					absPath = filepath.Join(baseDir, absPath)
-				}
-				if !seen[absPath] {
-					seen[absPath] = true
-					allPaths = append(allPaths, absPath)
-				}
-			}
-			for _, ref := range pd.References {
-				absPath := ref
-				if !filepath.IsAbs(absPath) {
-					absPath = filepath.Join(baseDir, absPath)
-				}
-				if !seen[absPath] {
-					seen[absPath] = true
-					allPaths = append(allPaths, absPath)
-				}
+	addPaths := func(paths []string) {
+		for _, p := range paths {
+			abs := absPath(p, baseDir)
+			if !seen[abs] {
+				seen[abs] = true
+				allPaths = append(allPaths, abs)
 			}
 		}
-		if pd, ok := decl.(*ast.PromptDecl); ok {
-			for _, ref := range pd.References {
-				absPath := ref
-				if !filepath.IsAbs(absPath) {
-					absPath = filepath.Join(baseDir, absPath)
-				}
-				if !seen[absPath] {
-					seen[absPath] = true
-					allPaths = append(allPaths, absPath)
-				}
-			}
+	}
+
+	// Collect all target and reference paths from all plans and prompts.
+	for _, decl := range file.Declarations {
+		switch d := decl.(type) {
+		case *ast.PlanDecl:
+			addPaths(d.Targets)
+			addPaths(d.References)
+		case *ast.PromptDecl:
+			addPaths(d.References)
 		}
 	}
 

@@ -1,7 +1,6 @@
 package render
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/vailang/vai/internal/compiler/ast"
@@ -87,39 +86,32 @@ func collectBodyFilePaths(
 	baseDir string,
 ) (targetPaths, refPaths []string) {
 	seen := map[string]bool{}
+	add := func(p string) string {
+		ap := absPath(p, baseDir)
+		if seen[ap] {
+			return ""
+		}
+		seen[ap] = true
+		return ap
+	}
 	for _, seg := range segments {
 		switch s := seg.(type) {
 		case *ast.TargetRefSegment:
-			absPath := s.Name
-			if !filepath.IsAbs(absPath) {
-				absPath = filepath.Join(baseDir, absPath)
-			}
-			if !seen[absPath] {
-				seen[absPath] = true
-				targetPaths = append(targetPaths, absPath)
+			if ap := add(s.Name); ap != "" {
+				targetPaths = append(targetPaths, ap)
 			}
 		case *ast.ReferenceRefSegment:
 			// Check if this is a plan name reference — import its targets.
 			if plan, ok := plans[s.Name]; ok {
 				for _, t := range plan.Targets {
-					absPath := t
-					if !filepath.IsAbs(absPath) {
-						absPath = filepath.Join(baseDir, absPath)
-					}
-					if !seen[absPath] {
-						seen[absPath] = true
-						refPaths = append(refPaths, absPath)
+					if ap := add(t); ap != "" {
+						refPaths = append(refPaths, ap)
 					}
 				}
 				continue
 			}
-			absPath := s.Name
-			if !filepath.IsAbs(absPath) {
-				absPath = filepath.Join(baseDir, absPath)
-			}
-			if !seen[absPath] {
-				seen[absPath] = true
-				refPaths = append(refPaths, absPath)
+			if ap := add(s.Name); ap != "" {
+				refPaths = append(refPaths, ap)
 			}
 		}
 	}

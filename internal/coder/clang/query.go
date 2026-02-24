@@ -65,6 +65,12 @@ func (q *Query) ReadSymbols(source []byte) ([]coder.Symbol, error) {
 			if sym != nil {
 				symbols = append(symbols, *sym)
 			}
+
+		case "preproc_def":
+			sym := extractPreprocessorDef(child, source)
+			if sym != nil {
+				symbols = append(symbols, *sym)
+			}
 		}
 	}
 
@@ -108,6 +114,22 @@ func findContiguousImports(root *tree_sitter.Node, source []byte, nodeKind strin
 		}
 	}
 	return zone
+}
+
+func extractPreprocessorDef(node *tree_sitter.Node, source []byte) *coder.Symbol {
+	nameNode := node.ChildByFieldName("name")
+	if nameNode == nil {
+		return nil
+	}
+	name := nameNode.Utf8Text(source)
+	sig := strings.TrimSpace(node.Utf8Text(source))
+	return &coder.Symbol{
+		Name:      name,
+		Kind:      coder.SymbolConst,
+		Signature: sig,
+		StartByte: int(node.StartByte()),
+		EndByte:   int(node.EndByte()),
+	}
 }
 
 func extractFuncDef(node *tree_sitter.Node, source []byte) *coder.Symbol {

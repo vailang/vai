@@ -38,14 +38,32 @@ type TargetResolver interface {
 	GetDoc(path, name string) (string, bool)
 }
 
-// Error represents a semantic validation error with position.
+// Severity classifies the importance of a validation diagnostic.
+type Severity int
+
+const (
+	SeverityError   Severity = iota // blocks compilation
+	SeverityWarning                 // reported but does not block
+)
+
+// Error represents a semantic validation diagnostic with position and severity.
 type Error struct {
-	Msg string
-	Pos ast.Position
+	Msg      string
+	Pos      ast.Position
+	Severity Severity
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("%d:%d: %s", e.Pos.Line, e.Pos.Column, e.Msg)
+	prefix := ""
+	if e.Severity == SeverityWarning {
+		prefix = "warning: "
+	}
+	return fmt.Sprintf("%d:%d: %s%s", e.Pos.Line, e.Pos.Column, prefix, e.Msg)
+}
+
+// IsWarning returns true if this diagnostic is a warning.
+func (e Error) IsWarning() bool {
+	return e.Severity == SeverityWarning
 }
 
 // RequestType classifies the kind of work a request represents.
@@ -80,10 +98,13 @@ type Reference struct {
 
 // Request represents a resolved task ready for the planner/executor pipeline.
 type Request struct {
-	Name       string      // declaration name
-	Task       string      // signature + description (prompt text)
-	References []Reference // all resolved [use X] dependencies
-	Type       RequestType // PlannerAgent or ExecutorAgent
+	Name        string      // declaration name
+	PlanName    string      // parent plan name (empty for top-level declarations)
+	TargetPaths []string    // target file paths from the plan
+	SourcePath  string      // absolute path of the source .vai/.plan file
+	Task        string      // signature + description (prompt text)
+	References  []Reference // all resolved [use X] dependencies
+	Type        RequestType // PlannerAgent or ExecutorAgent
 }
 
 // Composer validates the semantic correctness of parsed AST files
@@ -99,6 +120,10 @@ type Composer struct {
 	// declared maps symbol names to their declarations across all files.
 	declared map[string]ast.Declaration
 
+	// baseDir is the project root for relative path resolution.
+	// When set, target/reference paths resolve relative to this directory.
+	baseDir string
+
 	// targetSymbols and targetSigs are populated from target files during validation.
 	targetSymbols  map[string]ast.SymbolKind
 	targetSigs     map[string]string
@@ -111,7 +136,7 @@ type Composer struct {
 // targetResolver provides symbol information from target files (via coder).
 // knownPrompts is a set of qualified prompt names for [inject X.Y] validation.
 // Pass nil for any parameter if not available.
-func New(src ASTSource, resolver SymbolResolver, targetResolver TargetResolver, knownPrompts map[string]bool) *Composer {
+func New(src ASTSource, resolver SymbolResolver, targetResolver TargetResolver, knownPrompts map[string]bool, baseDir string) *Composer {
 	var symbols map[string]ast.SymbolKind
 	if resolver != nil {
 		symbols = resolver.Symbols()
@@ -122,6 +147,7 @@ func New(src ASTSource, resolver SymbolResolver, targetResolver TargetResolver, 
 		targetResolver: targetResolver,
 		symbols:        symbols,
 		knownPrompts:   knownPrompts,
+		baseDir:        baseDir,
 	}
 }
 

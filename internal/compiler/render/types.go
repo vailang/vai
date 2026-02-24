@@ -19,4 +19,6 @@ type TargetInfo interface {
 	GetSkeleton(path string) (string, bool)
 	// GetDoc returns the documentation comment for a named symbol.
 	GetDoc(path, name string) (string, bool)
+	// GetRawContent returns the raw file content for non-code files.
+	GetRawContent(path string) (string, bool)
 }

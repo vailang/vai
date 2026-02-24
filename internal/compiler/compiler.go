@@ -17,11 +17,18 @@ import (
 )
 
 // compiler implements the Compiler interface.
-type compiler struct{}
+type compiler struct {
+	baseDir string // project root (vai.toml dir); empty = use source file dir
+}
 
 // New creates a new Compiler.
 func New() Compiler {
 	return &compiler{}
+}
+
+// SetBaseDir sets the project root for relative path resolution.
+func (c *compiler) SetBaseDir(dir string) {
+	c.baseDir = dir
 }
 
 // Parse reads .vai/.plan files from path (file or directory) and compiles
@@ -81,10 +88,17 @@ func (c *compiler) ParseSources(sources map[string]string) (Program, []error) {
 	tr := newTargetResolver()
 
 	astSrc := &fileSource{files: files}
-	comp := composer.New(astSrc, nil, tr, knownPrompts)
+	comp := composer.New(astSrc, nil, tr, knownPrompts, c.baseDir)
 	compErrs := comp.Validate()
+
+	// Separate warnings from errors — only errors block compilation.
+	var warnings []error
 	for _, ce := range compErrs {
-		errs = append(errs, ce)
+		if ce.IsWarning() {
+			warnings = append(warnings, ce)
+		} else {
+			errs = append(errs, ce)
+		}
 	}
 	if len(errs) > 0 {
 		tr.Close()
@@ -99,7 +113,7 @@ func (c *compiler) ParseSources(sources map[string]string) (Program, []error) {
 	}
 
 	requests := comp.Requests()
-	return &program{file: merged, requests: requests, targetResolver: tr, stdPrompts: stdPrompts}, nil
+	return &program{file: merged, requests: requests, targetResolver: tr, stdPrompts: stdPrompts, projectDir: c.baseDir, warnings: warnings}, nil
 }
 
 // loadStdPrompts parses the embedded standard library .vai files and returns
@@ -150,11 +164,15 @@ func loadStdPrompts() (map[string]*ast.PromptDecl, []error) {
 // ---------------------------------------------------------------------------
 
 type targetResolverImpl struct {
-	coders map[string]*coder.Coder // absolute path → loaded coder
+	coders   map[string]*coder.Coder // absolute path → loaded coder
+	rawFiles map[string]string       // absolute path → raw content (non-code files)
 }
 
 func newTargetResolver() *targetResolverImpl {
-	return &targetResolverImpl{coders: make(map[string]*coder.Coder)}
+	return &targetResolverImpl{
+		coders:   make(map[string]*coder.Coder),
+		rawFiles: make(map[string]string),
+	}
 }
 
 func (r *targetResolverImpl) getOrCreate(path string) (*coder.Coder, error) {
@@ -164,7 +182,13 @@ func (r *targetResolverImpl) getOrCreate(path string) (*coder.Coder, error) {
 
 	lang, err := coder.DetectLanguage(path)
 	if err != nil {
-		return nil, fmt.Errorf("unsupported target language for %s: %w", path, err)
+		// Non-code file (e.g. go.mod, Cargo.toml) — read raw content instead.
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil, nil // file doesn't exist, no symbols and no raw content
+		}
+		r.rawFiles[path] = string(src)
+		return nil, nil // no coder, but not an error
 	}
 
 	cod, err := coder.New(lang, path)
@@ -193,6 +217,10 @@ func (r *targetResolverImpl) ResolveTarget(path string) (map[string]ast.SymbolKi
 	if err != nil {
 		return nil, nil, err
 	}
+	if cod == nil {
+		// Non-code file — no symbols to extract.
+		return map[string]ast.SymbolKind{}, map[string]string{}, nil
+	}
 
 	raw := cod.Symbols()
 	symbols := make(map[string]ast.SymbolKind, len(raw))
@@ -219,7 +247,7 @@ func (r *targetResolverImpl) GetCode(path, name string) (string, bool) {
 
 func (r *targetResolverImpl) GetSkeleton(path string) (string, bool) {
 	cod, err := r.getOrCreate(path)
-	if err != nil {
+	if err != nil || cod == nil {
 		return "", false
 	}
 	skeleton, err := cod.Skeleton()
@@ -227,6 +255,11 @@ func (r *targetResolverImpl) GetSkeleton(path string) (string, bool) {
 		return "", false
 	}
 	return skeleton, skeleton != ""
+}
+
+func (r *targetResolverImpl) GetRawContent(path string) (string, bool) {
+	content, ok := r.rawFiles[path]
+	return content, ok
 }
 
 func (r *targetResolverImpl) GetDoc(path, name string) (string, bool) {

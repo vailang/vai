@@ -1,10 +1,31 @@
 package render
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/vailang/vai/internal/compiler/ast"
+)
+
+// implStyle controls heading levels and formatting for different render modes.
+type implStyle struct {
+	titlePrefix string // e.g. "### Implementation Guide for: " or "# "
+	codeHeading string // e.g. "#### Actual state..." or "## Actual state..."
+	refHeading  string // e.g. "\n### Reference\n" or "\n## Reference\n"
+	textPrefix  string // extra newline before text parts (ImplInjected adds "\n")
+}
+
+var (
+	atomicStyle = implStyle{
+		titlePrefix: "### Implementation Guide for: ",
+		codeHeading: "#### Actual state of implementation\n",
+		refHeading:  "\n### Reference\n",
+	}
+	injectedStyle = implStyle{
+		titlePrefix: "# ",
+		codeHeading: "## Actual state of implementation\n",
+		refHeading:  "\n## Reference\n",
+		textPrefix:  "\n",
+	}
 )
 
 // ImplAtomic renders a single impl as a self-contained string.
@@ -16,43 +37,10 @@ func ImplAtomic(
 	plans map[string]*ast.PlanDecl,
 	target TargetInfo,
 	baseDir string,
+	planTargets ...string,
 ) string {
-	_, sigs, _ := resolveAllTargets(implParentFile(impl, plans), target, baseDir)
-
-	var buf strings.Builder
-	buf.WriteString("### Implementation Guide for: " + impl.Name + "\n")
-
-	// Show existing code from the impl's [target] file.
-	if implTarget := ImplTargetPath(impl, baseDir); implTarget != "" {
-		if target != nil {
-			if code, ok := target.GetCode(implTarget, impl.Name); ok {
-				buf.WriteString("#### Actual state of implementation\n")
-				buf.WriteString("```" + LangTag(implTarget) + "\n" + code + "\n```\n")
-			}
-		}
-	}
-
-	// Render body text (excluding [use] refs which go into Reference section).
-	textParts, refs := splitBodyTextAndRefs(impl.Body, prompts)
-
-	if len(textParts) > 0 {
-		buf.WriteString(strings.Join(textParts, "\n"))
-		buf.WriteString("\n")
-	}
-
-	// Reference section with resolved [use] dependencies (signatures only).
-	if len(refs) > 0 {
-		buf.WriteString("\n### Reference\n")
-		for _, ref := range refs {
-			if sig, ok := sigs[ref.Name]; ok {
-				buf.WriteString("- `" + sig + "`\n")
-			} else {
-				buf.WriteString("- `" + ref.Name + "`\n")
-			}
-		}
-	}
-
-	return buf.String()
+	file := implParentFile(impl, plans)
+	return renderImpl(impl, file, prompts, target, baseDir, atomicStyle, planTargets...)
 }
 
 // ImplInjected renders a single impl for `inject plan.impl` usage.
@@ -65,16 +53,30 @@ func ImplInjected(
 	target TargetInfo,
 	baseDir string,
 ) string {
-	_, sigs, _ := resolveAllTargets(implParentFile(impl, map[string]*ast.PlanDecl{plan.Name: plan}), target, baseDir)
+	file := implParentFile(impl, map[string]*ast.PlanDecl{plan.Name: plan})
+	return renderImpl(impl, file, prompts, target, baseDir, injectedStyle, plan.Targets...)
+}
+
+// renderImpl is the shared rendering logic for both ImplAtomic and ImplInjected.
+func renderImpl(
+	impl *ast.ImplDecl,
+	file *ast.File,
+	prompts map[string]*ast.PromptDecl,
+	target TargetInfo,
+	baseDir string,
+	style implStyle,
+	planTargets ...string,
+) string {
+	symbols, sigs, allPaths := resolveAllTargets(file, target, baseDir)
 
 	var buf strings.Builder
-	buf.WriteString("# " + impl.Name + "\n")
+	buf.WriteString(style.titlePrefix + impl.Name + "\n")
 
-	// Show the code block from the impl's [target] file.
-	if implTarget := ImplTargetPath(impl, baseDir); implTarget != "" {
+	// Show existing code from the impl's [target] file.
+	if implTarget := ImplTargetPath(impl, baseDir, planTargets...); implTarget != "" {
 		if target != nil {
 			if code, ok := target.GetCode(implTarget, impl.Name); ok {
-				buf.WriteString("## Actual state of implementation\n")
+				buf.WriteString(style.codeHeading)
 				lang := LangTag(implTarget)
 				buf.WriteString("```" + lang + "\n")
 				buf.WriteString(code)
@@ -86,24 +88,21 @@ func ImplInjected(
 		}
 	}
 
-	// Render body text.
+	// Render body text (excluding [use] refs which go into Reference section).
 	textParts, refs := splitBodyTextAndRefs(impl.Body, prompts)
 
 	if len(textParts) > 0 {
-		buf.WriteString("\n")
+		buf.WriteString(style.textPrefix)
 		buf.WriteString(strings.Join(textParts, "\n"))
 		buf.WriteString("\n")
 	}
 
-	// Reference section — signatures only, no code.
+	// Reference section with resolved [use] dependencies.
+	// Structs/classes/interfaces/traits render as full code blocks; others as signatures.
 	if len(refs) > 0 {
-		buf.WriteString("\n## Reference\n")
+		buf.WriteString(style.refHeading)
 		for _, ref := range refs {
-			if sig, ok := sigs[ref.Name]; ok {
-				buf.WriteString("- `" + sig + "`\n")
-			} else {
-				buf.WriteString("- `" + ref.Name + "`\n")
-			}
+			buf.WriteString(renderRefItem(ref, symbols, sigs, target, allPaths))
 		}
 	}
 
@@ -112,15 +111,17 @@ func ImplInjected(
 
 // ImplTargetPath extracts the [target "path"] from an impl's body segments.
 // Returns the absolute path, or empty string if no target found.
-func ImplTargetPath(impl *ast.ImplDecl, baseDir string) string {
+// planTargets provides fallback targets when the impl has no explicit [target]
+// (auto-inherit for single-target plans).
+func ImplTargetPath(impl *ast.ImplDecl, baseDir string, planTargets ...string) string {
 	for _, seg := range impl.Body {
 		if tr, ok := seg.(*ast.TargetRefSegment); ok {
-			absPath := tr.Name
-			if !filepath.IsAbs(absPath) {
-				absPath = filepath.Join(baseDir, absPath)
-			}
-			return absPath
+			return absPath(tr.Name, baseDir)
 		}
+	}
+	// Auto-inherit: if plan has exactly one target and impl has none, use it.
+	if len(planTargets) == 1 && planTargets[0] != "" {
+		return absPath(planTargets[0], baseDir)
 	}
 	return ""
 }
@@ -150,6 +151,35 @@ func splitBodyTextAndRefs(
 		}
 	}
 	return
+}
+
+// renderRefItem renders a single [use] reference for the Reference section.
+// Structs/classes/interfaces/traits are rendered as full code fences.
+// Functions and other symbols are rendered as inline backtick signatures.
+func renderRefItem(
+	ref *ast.UseRefSegment,
+	symbols map[string]ast.SymbolKind,
+	sigs map[string]string,
+	target TargetInfo,
+	allPaths []string,
+) string {
+	// Structs/classes/interfaces/traits: try full code fence first.
+	kind := symbols[ref.Name]
+	switch kind {
+	case ast.SymbolStruct, ast.SymbolClass, ast.SymbolInterface, ast.SymbolTrait:
+		if target != nil {
+			for _, path := range allPaths {
+				if code, ok := target.GetCode(path, ref.Name); ok {
+					return "```" + LangTag(path) + "\n" + code + "\n```\n"
+				}
+			}
+		}
+	}
+	// All symbols fall back to signature, then bare name.
+	if sig, ok := sigs[ref.Name]; ok {
+		return "- `" + sig + "`\n"
+	}
+	return "- `" + ref.Name + "`\n"
 }
 
 // implParentFile creates a minimal ast.File containing the plan declarations

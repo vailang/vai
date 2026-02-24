@@ -9,11 +9,12 @@ import (
 
 // mockTargetInfo implements TargetInfo for testing.
 type mockTargetInfo struct {
-	symbols   map[string]ast.SymbolKind     // name → kind
-	sigs      map[string]string             // name → signature
-	code      map[string]map[string]string  // path → name → code
-	skeletons map[string]string             // path → skeleton
-	docs      map[string]map[string]string  // path → name → doc
+	symbols    map[string]ast.SymbolKind     // name → kind
+	sigs       map[string]string             // name → signature
+	code       map[string]map[string]string  // path → name → code
+	skeletons  map[string]string             // path → skeleton
+	docs       map[string]map[string]string  // path → name → doc
+	rawContent map[string]string             // path → raw file content
 }
 
 func (m *mockTargetInfo) ResolveTarget(path string) (map[string]ast.SymbolKind, map[string]string, error) {
@@ -48,6 +49,14 @@ func (m *mockTargetInfo) GetDoc(path, name string) (string, bool) {
 		return doc, ok
 	}
 	return "", false
+}
+
+func (m *mockTargetInfo) GetRawContent(path string) (string, bool) {
+	if m.rawContent == nil {
+		return "", false
+	}
+	content, ok := m.rawContent[path]
+	return content, ok
 }
 
 func TestBodyText(t *testing.T) {
@@ -128,9 +137,9 @@ func TestUseRefInterface(t *testing.T) {
 func TestUseRefUnresolved(t *testing.T) {
 	ref := &ast.UseRefSegment{Name: "missing"}
 	got := UseRef(ref, nil, nil, nil, nil)
-	want := "[use missing]"
+	want := ""
 	if got != want {
-		t.Errorf("UseRef(missing) = %q, want %q", got, want)
+		t.Errorf("UseRef(missing) = %q, want empty", got)
 	}
 }
 
@@ -233,5 +242,171 @@ func TestRenderNilFile(t *testing.T) {
 	got := Render(nil, nil, nil, nil, "")
 	if got != "" {
 		t.Errorf("Render(nil) = %q, want empty", got)
+	}
+}
+
+func TestImplAtomicReferenceStructFullBlock(t *testing.T) {
+	plan := &ast.PlanDecl{
+		Name:    "rust",
+		Targets: []string{"src/main.rs"},
+	}
+	impl := &ast.ImplDecl{
+		Name: "add",
+		Body: []ast.BodySegment{
+			&ast.TextSegment{Content: "implement add function"},
+			&ast.UseRefSegment{Name: "TodoItem"},
+		},
+	}
+	plan.Impls = []*ast.ImplDecl{impl}
+
+	target := &mockTargetInfo{
+		symbols: map[string]ast.SymbolKind{"TodoItem": ast.SymbolStruct},
+		sigs:    map[string]string{"TodoItem": "struct TodoItem"},
+		code: map[string]map[string]string{
+			"/project/src/main.rs": {
+				"TodoItem": "struct TodoItem {\n    id: i32,\n    title: String,\n    completed: bool,\n}",
+			},
+		},
+	}
+
+	got := ImplAtomic(impl, nil, map[string]*ast.PlanDecl{"rust": plan}, target, "/project", plan.Targets...)
+	// Should contain full struct definition, not just "struct TodoItem"
+	if !strings.Contains(got, "```rust\nstruct TodoItem {\n    id: i32,\n    title: String,\n    completed: bool,\n}\n```") {
+		t.Errorf("ImplAtomic Reference section should contain full struct code fence, got:\n%s", got)
+	}
+	// Should NOT contain bare signature for the struct
+	if strings.Contains(got, "- `struct TodoItem`") {
+		t.Errorf("ImplAtomic Reference section should not contain bare struct signature, got:\n%s", got)
+	}
+}
+
+func TestImplAtomicReferenceFuncStaysSignature(t *testing.T) {
+	plan := &ast.PlanDecl{
+		Name:    "rust",
+		Targets: []string{"src/main.rs"},
+	}
+	impl := &ast.ImplDecl{
+		Name: "main",
+		Body: []ast.BodySegment{
+			&ast.TextSegment{Content: "implement main"},
+			&ast.UseRefSegment{Name: "add"},
+		},
+	}
+	plan.Impls = []*ast.ImplDecl{impl}
+
+	target := &mockTargetInfo{
+		symbols: map[string]ast.SymbolKind{"add": ast.SymbolFunction},
+		sigs:    map[string]string{"add": "fn add(a: i32, b: i32) -> i32"},
+	}
+
+	got := ImplAtomic(impl, nil, map[string]*ast.PlanDecl{"rust": plan}, target, "/project", plan.Targets...)
+	if !strings.Contains(got, "- `fn add(a: i32, b: i32) -> i32`") {
+		t.Errorf("ImplAtomic Reference section should contain inline signature for functions, got:\n%s", got)
+	}
+}
+
+func TestPlanReferenceFilesSection(t *testing.T) {
+	plan := &ast.PlanDecl{
+		Name:       "myplan",
+		Targets:    []string{"src/main.rs"},
+		References: []string{"Cargo.toml"},
+		Specs: []*ast.SpecDecl{
+			{Body: []ast.BodySegment{&ast.TextSegment{Content: "Build a CLI tool"}}},
+		},
+	}
+
+	target := &mockTargetInfo{
+		symbols: map[string]ast.SymbolKind{},
+		sigs:    map[string]string{},
+		skeletons: map[string]string{
+			"/project/src/main.rs": "fn main() {}",
+		},
+		rawContent: map[string]string{
+			"/project/Cargo.toml": "[package]\nname = \"myapp\"\nversion = \"0.1.0\"\n",
+		},
+	}
+
+	got := Plan(plan, nil, nil, target, nil, "/project")
+
+	if !strings.Contains(got, "## Reference Files") {
+		t.Errorf("Plan should contain Reference Files section, got:\n%s", got)
+	}
+	if !strings.Contains(got, "### Cargo.toml") {
+		t.Errorf("Plan should contain Cargo.toml heading, got:\n%s", got)
+	}
+	if !strings.Contains(got, "```toml\n[package]") {
+		t.Errorf("Plan should contain toml code fence with content, got:\n%s", got)
+	}
+}
+
+func TestPlanNoReferenceFilesForCodeFiles(t *testing.T) {
+	plan := &ast.PlanDecl{
+		Name:       "myplan",
+		Targets:    []string{"src/main.rs"},
+		References: []string{"src/lib.rs"},
+	}
+
+	target := &mockTargetInfo{
+		symbols: map[string]ast.SymbolKind{"helper": ast.SymbolFunction},
+		sigs:    map[string]string{"helper": "fn helper()"},
+	}
+
+	got := Plan(plan, nil, nil, target, nil, "/project")
+
+	// Code references should NOT appear in Reference Files section (they have no raw content).
+	if strings.Contains(got, "## Reference Files") {
+		t.Errorf("Plan should NOT contain Reference Files section for code files, got:\n%s", got)
+	}
+}
+
+func TestExtTag(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"Cargo.toml", "toml"},
+		{"package.json", "json"},
+		{"config.yaml", "yaml"},
+		{"config.yml", "yaml"},
+		{"go.mod", "go"},
+		{"main.go", "go"},
+		{"main.rs", "rust"},
+		{"unknown.xyz", ""},
+	}
+	for _, tt := range tests {
+		got := ExtTag(tt.path)
+		if got != tt.want {
+			t.Errorf("ExtTag(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestImplInjectedReferenceInterfaceFullBlock(t *testing.T) {
+	plan := &ast.PlanDecl{
+		Name:    "goapp",
+		Targets: []string{"src/lib.go"},
+	}
+	impl := &ast.ImplDecl{
+		Name: "Process",
+		Body: []ast.BodySegment{
+			&ast.TextSegment{Content: "implement process"},
+			&ast.UseRefSegment{Name: "Reader"},
+		},
+	}
+	plan.Impls = []*ast.ImplDecl{impl}
+
+	target := &mockTargetInfo{
+		symbols: map[string]ast.SymbolKind{"Reader": ast.SymbolInterface},
+		sigs:    map[string]string{"Reader": "type Reader interface"},
+		code: map[string]map[string]string{
+			"/project/src/lib.go": {
+				"Reader": "type Reader interface {\n\tRead(p []byte) (int, error)\n}",
+			},
+		},
+	}
+
+	got := ImplInjected(impl, plan, nil, target, "/project")
+	if !strings.Contains(got, "```go\ntype Reader interface {\n\tRead(p []byte) (int, error)\n}\n```") {
+		t.Errorf("ImplInjected Reference section should contain full interface code fence, got:\n%s", got)
 	}
 }

@@ -21,7 +21,11 @@ func (c *Composer) fileRequests(file *ast.File) []Request {
 	var reqs []Request
 
 	for _, decl := range file.Declarations {
-		reqs = append(reqs, c.declRequests(decl)...)
+		declReqs := c.declRequests(decl)
+		for i := range declReqs {
+			declReqs[i].SourcePath = file.SourcePath
+		}
+		reqs = append(reqs, declReqs...)
 	}
 
 	return reqs
@@ -38,13 +42,19 @@ func (c *Composer) declRequests(decl ast.Declaration) []Request {
 	if plan, ok := decl.(*ast.PlanDecl); ok {
 		var reqs []Request
 		for _, inner := range plan.Declarations {
-			reqs = append(reqs, c.declRequests(inner)...)
+			innerReqs := c.declRequests(inner)
+			for i := range innerReqs {
+				innerReqs[i].PlanName = plan.Name
+				innerReqs[i].TargetPaths = plan.Targets
+			}
+			reqs = append(reqs, innerReqs...)
 		}
 		// The plan itself is a PlannerAgent request.
 		reqs = append(reqs, Request{
-			Name: plan.Name,
-			Task: buildTask(plan),
-			Type: PlannerAgent,
+			Name:        plan.Name,
+			TargetPaths: plan.Targets,
+			Task:        buildTask(plan),
+			Type:        PlannerAgent,
 		})
 		return reqs
 	}

@@ -9,6 +9,8 @@ const (
 	SymbolClass     SymbolKind = "class"
 	SymbolInterface SymbolKind = "interface"
 	SymbolTrait     SymbolKind = "trait"
+	SymbolConst     SymbolKind = "const"
+	SymbolEnum      SymbolKind = "enum"
 )
 
 // Symbol represents a top-level declaration extracted from a host language file.

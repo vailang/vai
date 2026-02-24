@@ -1,7 +1,6 @@
 package render
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/vailang/vai/internal/compiler/ast"
@@ -39,14 +38,11 @@ func Plan(
 	if len(plan.Targets) > 0 {
 		buf.WriteString("## Target File Status\n")
 		for _, t := range plan.Targets {
-			absPath := t
-			if !filepath.IsAbs(absPath) {
-				absPath = filepath.Join(baseDir, absPath)
-			}
+			ap := absPath(t, baseDir)
 			// Try skeleton view first — full file structure with empty bodies.
 			if target != nil {
-				if skeleton, ok := target.GetSkeleton(absPath); ok {
-					lang := LangTag(absPath)
+				if skeleton, ok := target.GetSkeleton(ap); ok {
+					lang := LangTag(ap)
 					buf.WriteString("### " + t + "\n")
 					buf.WriteString("```" + lang + "\n")
 					buf.WriteString(skeleton)
@@ -56,7 +52,7 @@ func Plan(
 					buf.WriteString("```\n\n")
 				} else {
 					// Fallback to symbol listing if skeleton fails.
-					symbols, sigs, err := target.ResolveTarget(absPath)
+					symbols, sigs, err := target.ResolveTarget(ap)
 					if err != nil {
 						continue
 					}
@@ -75,6 +71,30 @@ func Plan(
 		buf.WriteString("---\n\n")
 	}
 
+	// ## Reference Files — raw content of non-code reference files (e.g. go.mod, Cargo.toml).
+	if len(plan.References) > 0 && target != nil {
+		var refBuf strings.Builder
+		for _, ref := range plan.References {
+			ap := absPath(ref, baseDir)
+			if content, ok := target.GetRawContent(ap); ok {
+				if refBuf.Len() == 0 {
+					refBuf.WriteString("## Reference Files\n")
+				}
+				refBuf.WriteString("### " + ref + "\n")
+				refBuf.WriteString("```" + ExtTag(ref) + "\n")
+				refBuf.WriteString(content)
+				if !strings.HasSuffix(content, "\n") {
+					refBuf.WriteString("\n")
+				}
+				refBuf.WriteString("```\n\n")
+			}
+		}
+		if refBuf.Len() > 0 {
+			buf.WriteString(refBuf.String())
+			buf.WriteString("---\n\n")
+		}
+	}
+
 	// ## Implementation Order — each impl is atomic.
 	if len(plan.Impls) > 0 {
 		buf.WriteString("## Implementation Order\n")
@@ -82,7 +102,7 @@ func Plan(
 			if len(plan.Targets) == 0 {
 				buf.WriteString("### impl " + impl.Name + " (target not used)\n")
 			} else {
-				buf.WriteString(ImplAtomic(impl, prompts, plans, target, baseDir))
+				buf.WriteString(ImplAtomic(impl, prompts, plans, target, baseDir, plan.Targets...))
 			}
 			buf.WriteString("\n")
 		}

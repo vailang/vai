@@ -78,7 +78,7 @@ func TestUseRefToPromptIsError(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
 		t.Fatal("expected error for [use prompt]")
@@ -103,7 +103,7 @@ func TestUseRefToSignatureOnlyFuncIsError(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
 		t.Fatal("expected error for [use signature-only func]")
@@ -129,14 +129,14 @@ func TestUseRefToFuncWithBodyIsOK(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
 }
 
-func TestUseRefToUndeclaredIsError(t *testing.T) {
+func TestUseRefToUndeclaredIsWarning(t *testing.T) {
 	src := singleFile(
 		&ast.FuncDecl{
 			Name: "greet",
@@ -147,13 +147,16 @@ func TestUseRefToUndeclaredIsError(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
-		t.Fatal("expected error for undeclared reference")
+		t.Fatal("expected warning for undeclared reference")
+	}
+	if !errs[0].IsWarning() {
+		t.Errorf("expected warning severity, got error: %s", errs[0].Msg)
 	}
 	if !strings.Contains(errs[0].Msg, "is not declared") {
-		t.Errorf("unexpected error: %s", errs[0].Msg)
+		t.Errorf("unexpected message: %s", errs[0].Msg)
 	}
 }
 
@@ -172,7 +175,7 @@ func TestUseRefToExternalSymbolIsOK(t *testing.T) {
 		"add_numbers": ast.SymbolFunction,
 	})
 
-	c := New(src, resolver, nil, nil)
+	c := New(src, resolver, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -199,7 +202,7 @@ func TestUseRefWithCodeModifierOnASTDeclIsError(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
 		t.Fatal("expected error for +code on AST declaration")
@@ -224,7 +227,7 @@ func TestUseRefWithCodeModifierOnExternalIsOK(t *testing.T) {
 		"add_numbers": ast.SymbolFunction,
 	})
 
-	c := New(src, resolver, nil, nil)
+	c := New(src, resolver, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -250,7 +253,7 @@ func TestInjectRefToPromptIsOK(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -273,7 +276,7 @@ func TestInjectRefToFuncIsError(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
 		t.Fatal("expected error for [inject func]")
@@ -294,7 +297,7 @@ func TestInjectRefQualifiedPathSkipped(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors for qualified inject path: %v", errs)
@@ -313,7 +316,7 @@ func TestInjectRefStdPromptExistsIsOK(t *testing.T) {
 	)
 
 	known := map[string]bool{"std.executor_role": true}
-	c := New(src, nil, nil, known)
+	c := New(src, nil, nil, known, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -332,7 +335,7 @@ func TestInjectRefStdPromptMisspelledIsError(t *testing.T) {
 	)
 
 	known := map[string]bool{"std.executor_interface": true}
-	c := New(src, nil, nil, known)
+	c := New(src, nil, nil, known, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
 		t.Fatal("expected error for misspelled std prompt")
@@ -354,7 +357,7 @@ func TestInjectRefNonStdQualifiedPathSkippedEvenWithKnown(t *testing.T) {
 	)
 
 	known := map[string]bool{"std.executor_role": true}
-	c := New(src, nil, nil, known)
+	c := New(src, nil, nil, known, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors for non-std qualified path: %v", errs)
@@ -380,7 +383,7 @@ func TestUseRefToParamIsOK(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -417,7 +420,7 @@ func TestUseRefToStructTypeAliasIsOK(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -439,7 +442,7 @@ func TestUseRefToParamNotAddedAsReference(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	c.Validate()
 	reqs := c.Requests()
 	if len(reqs) != 1 {
@@ -469,7 +472,7 @@ func TestRequestsFromFuncDecl(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -511,7 +514,7 @@ func TestRequestsFromPlanDecl(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -548,7 +551,7 @@ func TestRequestsSkipPromptAndSignatureOnly(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	c.Validate()
 
 	reqs := c.Requests()
@@ -584,7 +587,7 @@ func TestRequestsWithExternalReference(t *testing.T) {
 		},
 	}
 
-	c := New(src, resolver, nil, nil)
+	c := New(src, resolver, nil, nil, "")
 	c.Validate()
 
 	reqs := c.Requests()
@@ -632,7 +635,7 @@ func TestRequestsWithInternalReference(t *testing.T) {
 		},
 	)
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	c.Validate()
 
 	reqs := c.Requests()
@@ -672,13 +675,16 @@ func TestInjectPromptBodyValidated(t *testing.T) {
 
 	src := singleFileWithInject(nil, []*ast.InjectPromptDecl{ip})
 
-	c := New(src, nil, nil, nil)
+	c := New(src, nil, nil, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
-		t.Fatal("expected error for undeclared ref in inject prompt")
+		t.Fatal("expected warning for undeclared ref in inject prompt")
+	}
+	if !errs[0].IsWarning() {
+		t.Errorf("expected warning severity, got error: %s", errs[0].Msg)
 	}
 	if !strings.Contains(errs[0].Msg, "is not declared") {
-		t.Errorf("unexpected error: %s", errs[0].Msg)
+		t.Errorf("unexpected message: %s", errs[0].Msg)
 	}
 }
 
@@ -743,14 +749,14 @@ func TestUseRefToTargetSymbolIsOK(t *testing.T) {
 		},
 	}
 
-	c := New(src, nil, tr, nil)
+	c := New(src, nil, tr, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
 }
 
-func TestUseRefToMissingTargetSymbolIsError(t *testing.T) {
+func TestUseRefToMissingTargetSymbolIsWarning(t *testing.T) {
 	src := &testSource{files: []*ast.File{{
 		Declarations: []ast.Declaration{
 			&ast.PlanDecl{
@@ -775,13 +781,16 @@ func TestUseRefToMissingTargetSymbolIsError(t *testing.T) {
 		},
 	}
 
-	c := New(src, nil, tr, nil)
+	c := New(src, nil, tr, nil, "")
 	errs := c.Validate()
 	if len(errs) == 0 {
-		t.Fatal("expected error for [use nonexistent]")
+		t.Fatal("expected warning for [use nonexistent]")
+	}
+	if !errs[0].IsWarning() {
+		t.Errorf("expected warning severity, got error: %s", errs[0].Msg)
 	}
 	if !strings.Contains(errs[0].Msg, "is not declared") {
-		t.Errorf("unexpected error: %s", errs[0].Msg)
+		t.Errorf("unexpected message: %s", errs[0].Msg)
 	}
 }
 
@@ -811,7 +820,7 @@ func TestUseRefToTargetSymbolWithCodeModifier(t *testing.T) {
 		},
 	}
 
-	c := New(src, nil, tr, nil)
+	c := New(src, nil, tr, nil, "")
 	errs := c.Validate()
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)

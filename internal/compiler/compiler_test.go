@@ -105,6 +105,168 @@ func TestCompilerTaskCount(t *testing.T) {
 	}
 }
 
+// helper: compile sources with a specific baseDir (simulates package mode).
+func compileSourceWithBaseDir(t *testing.T, sources map[string]string, baseDir string) Program {
+	t.Helper()
+	c := &compiler{baseDir: baseDir}
+	prog, errs := c.ParseSources(sources)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	return prog
+}
+
+func TestEvalInjectPlan(t *testing.T) {
+	source := `
+	plan todo {
+		target "src/todo.c"
+		spec {
+			Build a todo app with add and list functions.
+		}
+		impl add_todo {
+			[target "src/todo.c"]
+			implement the add function
+		}
+		impl list_todos {
+			[target "src/todo.c"]
+			implement the list function
+		}
+	}
+	`
+
+	prog := compileSource(t, source)
+	result, err := prog.Eval("inject todo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == "" {
+		t.Fatal("Eval('inject todo') returned empty result")
+	}
+	for _, want := range []string{"# todo", "Specification", "add_todo", "list_todos"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("result should contain %q, got:\n%s", want, result)
+		}
+	}
+}
+
+func TestEvalInjectPlanImpl(t *testing.T) {
+	source := `
+	plan todo {
+		target "src/todo.c"
+		spec {
+			Build a todo app.
+		}
+		impl add_todo {
+			[target "src/todo.c"]
+			implement the add function
+		}
+	}
+	`
+
+	prog := compileSource(t, source)
+	result, err := prog.Eval("inject todo.add_todo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == "" {
+		t.Fatal("Eval('inject todo.add_todo') returned empty result")
+	}
+	if !strings.Contains(result, "# add_todo") {
+		t.Errorf("result should contain impl heading, got:\n%s", result)
+	}
+	if !strings.Contains(result, "implement the add function") {
+		t.Errorf("result should contain impl body, got:\n%s", result)
+	}
+}
+
+func TestEvalInjectNonexistent(t *testing.T) {
+	prog := compileSource(t, `prompt greet { hi }`)
+	result, err := prog.Eval("inject nonexistent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "" {
+		t.Errorf("expected empty result for nonexistent inject, got %q", result)
+	}
+}
+
+func TestEvalInjectPlanWithBaseDir(t *testing.T) {
+	source := `
+	plan todo {
+		target "src/todo.c"
+		spec {
+			Build a todo app with add and list.
+		}
+		impl add_todo {
+			[target "src/todo.c"]
+			implement add
+		}
+	}
+	`
+
+	// Simulate package mode: source lives in a subdirectory of baseDir.
+	prog := compileSourceWithBaseDir(t, map[string]string{
+		"/project/plans/todo.plan": source,
+	}, "/project")
+
+	result, err := prog.Eval("inject todo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == "" {
+		t.Fatal("Eval with baseDir returned empty result")
+	}
+	for _, want := range []string{"# todo", "Specification", "add_todo"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("result should contain %q, got:\n%s", want, result)
+		}
+	}
+}
+
+func TestEvalParseErrorTypo(t *testing.T) {
+	prog := compileSource(t, `prompt greet { hi }`)
+	_, err := prog.Eval("inejct todo")
+	if err == nil {
+		t.Fatal("expected parse error for typo 'inejct'")
+	}
+}
+
+func TestCompilerUnresolvedUseIsWarningNotError(t *testing.T) {
+	source := `
+	plan MyPlan {
+		target "src/main.go"
+		spec {
+			Build something
+		}
+		impl add {
+			[target "src/main.go"]
+			[use NonExistent]
+			Add a new item
+		}
+	}
+	`
+
+	c := &compiler{}
+	prog, errs := c.ParseSources(map[string]string{"test.vai": source})
+	if len(errs) > 0 {
+		t.Fatalf("compilation should succeed with unresolved [use], got errors: %v", errs)
+	}
+	warnings := prog.Warnings()
+	if len(warnings) == 0 {
+		t.Fatal("expected at least one warning for unresolved [use NonExistent]")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w.Error(), "NonExistent") && strings.Contains(w.Error(), "not declared") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about 'NonExistent' not declared, got: %v", warnings)
+	}
+}
+
 func TestCompilerMultiFile(t *testing.T) {
 	sources := map[string]string{
 		"/project/prompts.vai": `prompt base {

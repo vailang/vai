@@ -18,6 +18,8 @@ type program struct {
 	requests       []composer.Request
 	targetResolver *targetResolverImpl
 	stdPrompts     map[string]*ast.PromptDecl // "std.name" → PromptDecl
+	projectDir     string                     // project root (vai.toml dir); empty = use source file dir
+	warnings       []error                    // non-fatal warnings from compilation
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +67,7 @@ func (p *program) Eval(source string) (string, error) {
 		return "", err
 	}
 
-	tmp := &program{file: combined, requests: p.requests, targetResolver: p.targetResolver, stdPrompts: p.stdPrompts}
+	tmp := &program{file: combined, requests: p.requests, targetResolver: p.targetResolver, stdPrompts: p.stdPrompts, projectDir: p.projectDir}
 	result := render.Exec(combined, tmp.indexPrompts(), tmp.indexPlans(), p.targetResolver, tmp.baseDir())
 	return result, nil
 }
@@ -76,6 +78,11 @@ func (p *program) Render() string {
 		return ""
 	}
 	return render.Render(p.file, p.indexPrompts(), p.indexPlans(), p.targetResolver, p.baseDir())
+}
+
+// Warnings returns non-fatal diagnostics from compilation.
+func (p *program) Warnings() []error {
+	return p.warnings
 }
 
 // ---------------------------------------------------------------------------
@@ -191,8 +198,12 @@ func (p *program) GetPlanImpl(name string) []string {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// baseDir returns the directory of the program's source file.
+// baseDir returns the project root directory for path resolution.
+// Uses projectDir (vai.toml dir) when set, otherwise falls back to source file dir.
 func (p *program) baseDir() string {
+	if p.projectDir != "" {
+		return p.projectDir
+	}
 	if p.file == nil {
 		return ""
 	}
