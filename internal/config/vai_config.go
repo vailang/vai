@@ -8,8 +8,10 @@ type LibConfig struct {
 
 // LLMConfig defines the configuration for an LLM agent (Planner or Executor).
 // Provider and Model are not required when BaseURL is set.
+// Schema selects the wire format ("openai", "anthropic", "gemini") for custom providers.
 type LLMConfig struct {
 	Provider             string `toml:"provider"`
+	Schema               string `toml:"schema"`
 	Model                string `toml:"model"`
 	BaseURL              string `toml:"base_url"`
 	EnvTokenVariableName string `toml:"env_token_variable_name"`
@@ -18,16 +20,17 @@ type LLMConfig struct {
 	DelayRetrySeconds    int    `toml:"delay_retry_seconds"`
 }
 
-// DebugToolConfig defines a single debug tool for a target language.
-// Cmd is the command to execute, Format is the expected output format (e.g. "json", "stdout").
-type DebugToolConfig struct {
-	Cmd    string `toml:"cmd"`
-	Format string `toml:"format"`
+// DebugLangConfig defines compile-check and tools for one target language.
+type DebugLangConfig struct {
+	CompileCheck string   `toml:"compile_check"`
+	Format       string   `toml:"format"` // "json" for structured output, empty for raw text
+	Tools        []string `toml:"tools"`
 }
 
-// DebugConfig holds debug configuration for the target language.
+// DebugConfig holds debug configuration keyed by language.
 type DebugConfig struct {
-	Tools []DebugToolConfig `toml:"tools"`
+	MaxAttempts int                        `toml:"max_attempts"`
+	Languages   map[string]DebugLangConfig `toml:"languages"`
 }
 
 // Config is the main Vai configuration, loaded from vai.toml.
