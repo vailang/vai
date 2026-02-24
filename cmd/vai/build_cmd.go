@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +25,12 @@ func buildCommand() *cobra.Command {
 			var errs []error
 
 			if len(args) == 1 {
-				// Standalone single-file mode.
+				// Single-file mode: try to find vai.toml for path resolution.
+				absPath, _ := filepath.Abs(args[0])
+				startDir := filepath.Dir(absPath)
+				if cfgPath, cfgErr := config.FindConfig(startDir); cfgErr == nil {
+					comp.SetBaseDir(filepath.Dir(cfgPath))
+				}
 				prog, errs = comp.Parse(args[0])
 			} else {
 				// Package mode: find vai.toml, load files.
@@ -40,11 +46,13 @@ func buildCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				baseDir := filepath.Dir(cfgPath)
+				comp.SetBaseDir(baseDir)
 				pkg := &config.Package{
 					Name:       cfg.Lib.Name,
 					ConfigPath: cfgPath,
-					RootDir:    filepath.Dir(cfgPath),
-					SrcDir:     filepath.Join(filepath.Dir(cfgPath), cfg.Lib.Prompts),
+					RootDir:    baseDir,
+					SrcDir:     filepath.Join(baseDir, cfg.Lib.Prompts),
 					Config:     cfg,
 				}
 				files, err := config.LoadPackageFiles(pkg)
@@ -64,17 +72,33 @@ func buildCommand() *cobra.Command {
 				return fmt.Errorf("compilation failed with %d error(s)", len(errs))
 			}
 
+			// Print warnings to stderr (non-fatal).
+			for _, w := range prog.Warnings() {
+				fmt.Fprintf(os.Stderr, "warning: %v\n", w)
+			}
+
 			if evalExpr != "" {
 				output, err := prog.Eval(evalExpr)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "error: %v\n", err)
 					return fmt.Errorf("eval failed")
 				}
+				if jsonFlag {
+					enc := json.NewEncoder(os.Stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(map[string]string{"output": output})
+				}
 				fmt.Print(output)
 				return nil
 			}
 
-			fmt.Print(prog.Render())
+			output := prog.Render()
+			if jsonFlag {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(map[string]string{"output": output})
+			}
+			fmt.Print(output)
 			return nil
 		},
 	}
