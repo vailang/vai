@@ -31,7 +31,7 @@ func PlanSkeletonTool() provider.ToolDefinition {
 							},
 							"name": map[string]any{
 								"type":        "string",
-								"description": "Fully qualified name. Use Type.method for methods.",
+								"description": "Valid identifier (letters, digits, underscores). Use camelCase for compound names (e.g. fmtDisplayCalcError). Use Type.method for methods.",
 							},
 							"action": map[string]any{
 								"type": "string",
@@ -49,36 +49,32 @@ func PlanSkeletonTool() provider.ToolDefinition {
 						"required": []string{"kind", "name", "action"},
 					},
 				},
-				"impls": map[string]any{
-					"type":        "array",
-					"description": "Implementation instructions for the executor. One per function that needs a body.",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"name": map[string]any{
-								"type":        "string",
-								"description": "Matches declaration name.",
-							},
-							"action": map[string]any{
-								"type": "string",
-								"enum": []string{"add", "update", "remove", "keep"},
-							},
-							"instruction": map[string]any{
-								"type":        "string",
-								"description": "Clear, concise instruction for the executor. Required for 'add' and 'update'.",
-							},
-							"uses": map[string]any{
-								"type":        "array",
-								"items":       map[string]any{"type": "string"},
-								"description": "Symbol names this implementation depends on.",
-							},
-							"target": map[string]any{
-								"type":        "string",
-								"description": "Target file path for this impl. Required when plan has multiple targets. Omit to use the plan's primary target.",
-							},
+			},
+			"impls": map[string]any{
+				"type":        "array",
+				"description": "Implementation instructions for each function. One impl per function declaration. Concise, technical, imperative tone.",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Must match a function declaration name exactly.",
 						},
-						"required": []string{"name", "action"},
+						"action": map[string]any{
+							"type": "string",
+							"enum": []string{"add", "update", "remove", "keep"},
+						},
+						"instruction": map[string]any{
+							"type":        "string",
+							"description": "Concise technical instruction for the executor. Imperative tone, no filler. Example: 'Match on op: + => Ok(a+b), - => Ok(a-b), * => Ok(a*b), / => guard b==0 then Err(DivisionByZero) else Ok(a/b).'",
+						},
+						"uses": map[string]any{
+							"type":        "array",
+							"description": "Symbol dependencies this impl needs.",
+							"items":       map[string]any{"type": "string"},
+						},
 					},
+					"required": []string{"name", "action", "instruction"},
 				},
 			},
 			"required": []string{"imports", "declarations", "impls"},

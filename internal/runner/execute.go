@@ -8,6 +8,7 @@ import (
 
 	"github.com/vailang/vai/internal/coder"
 	"github.com/vailang/vai/internal/coder/api"
+	"github.com/vailang/vai/internal/locker"
 	"github.com/vailang/vai/internal/runner/provider"
 	"github.com/vailang/vai/internal/runner/tools"
 )
@@ -57,6 +58,8 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 		tokensIn  int
 		tokensOut int
 		err       error
+		cached    bool
+		textLen   int // length of instruction text (for token estimate)
 	}
 
 	var wg sync.WaitGroup
@@ -66,9 +69,28 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 		wg.Add(1)
 		go func(t implTask) {
 			defer wg.Done()
+			qualName := t.planName + "." + t.impl.Name
+
+			// Check lock before calling the executor.
+			if r.locker != nil {
+				implHash := locker.HashImpl(t.impl.Name, t.impl.Instruction, t.targetPath)
+				if r.locker.IsLocked("impl:"+qualName, implHash) {
+					r.emit(Event{Kind: EventInfo, Step: "executor", Name: qualName, Message: fmt.Sprintf("impl %q is locked, skipping", qualName)})
+					resultCh <- implResult{name: qualName, cached: true, textLen: len(t.impl.Instruction)}
+					return
+				}
+			}
+
 			tokIn, tokOut, err := r.executeImpl(ctx, system, t.planName, t.targetPath, t.impl)
+
+			// Record successful impl hash in the lock.
+			if err == nil && r.locker != nil {
+				implHash := locker.HashImpl(t.impl.Name, t.impl.Instruction, t.targetPath)
+				r.locker.Lock("impl:"+qualName, implHash)
+			}
+
 			resultCh <- implResult{
-				name:      t.planName + "." + t.impl.Name,
+				name:      qualName,
 				tokensIn:  tokIn,
 				tokensOut: tokOut,
 				err:       err,
@@ -79,8 +101,18 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 	wg.Wait()
 	close(resultCh)
 
+	var savedTextLen int
 	var errs []error
 	for res := range resultCh {
+		if res.cached {
+			r.stats.CachedImpls++
+			savedTextLen += res.textLen
+			r.stats.ImplStats = append(r.stats.ImplStats, ImplStat{
+				Name:   res.name,
+				Status: StatusSkipped,
+			})
+			continue
+		}
 		status := StatusComplete
 		if res.err != nil {
 			status = StatusFailed
@@ -92,6 +124,9 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 			TokensOut: res.tokensOut,
 			Status:    status,
 		})
+	}
+	if savedTextLen > 0 {
+		r.stats.SavedTokensEstimate = EstimateTokensSaved(savedTextLen)
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("%d impl(s) failed: %v", len(errs), errs[0])

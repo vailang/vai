@@ -8,11 +8,21 @@ import (
 	"github.com/vailang/vai/internal/compiler"
 	"github.com/vailang/vai/internal/compiler/ast"
 	"github.com/vailang/vai/internal/compiler/composer"
+	"github.com/vailang/vai/internal/compiler/render"
 	"github.com/vailang/vai/internal/config"
+	"github.com/vailang/vai/internal/locker"
 	"github.com/vailang/vai/internal/runner/filemanager"
 	"github.com/vailang/vai/internal/runner/provider"
 	"github.com/vailang/vai/internal/runner/tools"
 )
+
+// RequestLocker checks whether a request should be skipped (locked)
+// and records hashes after successful execution.
+type RequestLocker interface {
+	IsLocked(key, hash string) bool
+	Lock(key, hash string)
+	Save() error
+}
 
 // StepStatus represents the completion status of a pipeline step.
 type StepStatus string
@@ -43,6 +53,18 @@ type RunStats struct {
 	DebugTokensOut     int        `json:"debug_tokens_out"`
 	DebugCalls         int        `json:"debug_calls"`
 	DebugStatus        StepStatus `json:"debug_status"`
+	CachedPlans        int        `json:"cached_plans"`
+	CachedImpls        int        `json:"cached_impls"`
+	SavedTokensEstimate string   `json:"saved_tokens_estimate,omitempty"`
+}
+
+// EstimateTokensSaved returns an approximate token count saved by cache hits.
+// Uses the heuristic of ~4 characters per token, prefixed with ~ to indicate approximation.
+func EstimateTokensSaved(textLen int) string {
+	if textLen == 0 {
+		return ""
+	}
+	return fmt.Sprintf("~%d", textLen/4)
 }
 
 // Runner orchestrates the 5-step pipeline:
@@ -56,6 +78,7 @@ type Runner struct {
 	pool       *coderPool
 	baseDir    string // working directory for command execution
 	planFilter string // if set, only process plans matching this name
+	locker     RequestLocker
 	stats      RunStats
 	events     chan Event
 }
@@ -66,7 +89,8 @@ func (r *Runner) SetPlanFilter(name string) {
 }
 
 // New creates a Runner from a compiled Program and configuration.
-func New(prog compiler.Program, cfg *config.Config, baseDir string) (*Runner, error) {
+// If locker is nil, no lock checking is performed.
+func New(prog compiler.Program, cfg *config.Config, baseDir string, locker RequestLocker) (*Runner, error) {
 	planner, err := provider.New(cfg.Planner)
 	if err != nil {
 		return nil, fmt.Errorf("creating planner provider: %w", err)
@@ -83,6 +107,7 @@ func New(prog compiler.Program, cfg *config.Config, baseDir string) (*Runner, er
 		fm:       filemanager.New(),
 		pool:     newCoderPool(),
 		baseDir:  baseDir,
+		locker:   locker,
 	}, nil
 }
 
@@ -119,10 +144,14 @@ func (r *Runner) Run(ctx context.Context) (<-chan Event, <-chan error) {
 		if err != nil {
 			return err
 		}
+		r.mergeImpls(skeletons)
 		if err := r.runDiffAndSave(ctx, skeletons); err != nil {
 			return err
 		}
 		if err := r.runCodeStep(ctx, skeletons); err != nil {
+			return err
+		}
+		if err := r.saveLock(); err != nil {
 			return err
 		}
 		r.emit(Event{Kind: EventSummary, Data: r.stats})
@@ -141,6 +170,7 @@ func (r *Runner) RunSkeleton(ctx context.Context) (<-chan Event, <-chan error) {
 		if err != nil {
 			return err
 		}
+		r.mergeImpls(skeletons)
 		// Apply skeleton declarations to in-memory target files.
 		r.emit(Event{Kind: EventStepStart, Step: "diff", Message: "applying skeleton to target files..."})
 		if err := r.diff(skeletons); err != nil {
@@ -160,6 +190,9 @@ func (r *Runner) RunSkeleton(ctx context.Context) (<-chan Event, <-chan error) {
 		if err := r.fm.Flush(); err != nil {
 			return fmt.Errorf("flush: %w", err)
 		}
+		if err := r.saveLock(); err != nil {
+			return err
+		}
 		r.emit(Event{Kind: EventSummary, Data: r.stats})
 		r.emit(Event{Kind: EventDone})
 		return nil
@@ -176,12 +209,16 @@ func (r *Runner) RunPlan(ctx context.Context) (<-chan Event, <-chan error) {
 		if err != nil {
 			return err
 		}
+		r.mergeImpls(skeletons)
 		if err := r.runDiffAndSave(ctx, skeletons); err != nil {
 			return err
 		}
 		// Flush target files to disk.
 		if err := r.fm.Flush(); err != nil {
 			return fmt.Errorf("flush: %w", err)
+		}
+		if err := r.saveLock(); err != nil {
+			return err
 		}
 		r.emit(Event{Kind: EventSummary, Data: r.stats})
 		r.emit(Event{Kind: EventDone})
@@ -198,6 +235,9 @@ func (r *Runner) RunCode(ctx context.Context) (<-chan Event, <-chan error) {
 		// Build skeleton results from the already-compiled program's impls.
 		skeletons := r.buildSkeletonsFromProgram()
 		if err := r.runCodeStep(ctx, skeletons); err != nil {
+			return err
+		}
+		if err := r.saveLock(); err != nil {
 			return err
 		}
 		r.emit(Event{Kind: EventSummary, Data: r.stats})
@@ -228,19 +268,15 @@ func (r *Runner) runArchitectStep(ctx context.Context) ([]planSkeletonResult, er
 		r.emit(Event{Kind: EventSummary, Data: r.stats})
 		return nil, fmt.Errorf("architect step: %w", err)
 	}
+
+	// Fill in skeletons for plans that were locked (skipped by architect).
+	skeletons = r.fillLockedSkeletons(skeletons)
+
 	r.stats.ArchitectStatus = StatusComplete
 	r.emit(Event{Kind: EventStepComplete, Step: "architect"})
 
-	// Load any additional target files from per-impl/per-decl targets.
+	// Load any additional target files from per-decl targets.
 	for _, skel := range skeletons {
-		for _, impl := range skel.skeleton.Impls {
-			if impl.Target != "" {
-				absPath := r.resolvePath(impl.Target)
-				if err := r.fm.Load(absPath); err != nil {
-					return nil, fmt.Errorf("loading impl target %s: %w", impl.Target, err)
-				}
-			}
-		}
 		for _, decl := range skel.skeleton.Declarations {
 			if decl.Target != "" {
 				absPath := r.resolvePath(decl.Target)
@@ -339,10 +375,7 @@ func (r *Runner) buildSkeletonsFromProgram() []planSkeletonResult {
 		}
 		var impls []tools.SkeletonImpl
 		for _, impl := range plan.Impls {
-			impls = append(impls, tools.SkeletonImpl{
-				Name:   impl.Name,
-				Action: "update",
-			})
+			impls = append(impls, astImplToSkeleton(impl))
 		}
 		results = append(results, planSkeletonResult{
 			planName:    req.Name,
@@ -402,6 +435,16 @@ func (r *Runner) architect(ctx context.Context) ([]planSkeletonResult, error) {
 			continue
 		}
 
+		// Check lock before calling the planner.
+		if r.locker != nil {
+			planHash := r.computePlanHash(req.Name)
+			if planHash != "" && r.locker.IsLocked("plan:"+req.Name, planHash) {
+				r.emit(Event{Kind: EventInfo, Step: "architect", Name: req.Name, Message: fmt.Sprintf("plan %q is locked, skipping", req.Name)})
+				r.stats.CachedPlans++
+				continue
+			}
+		}
+
 		// System prompt via Eval.
 		system, err := r.prog.Eval("inject std.vai_system")
 		if err != nil {
@@ -443,8 +486,136 @@ func (r *Runner) architect(ctx context.Context) ([]planSkeletonResult, error) {
 					sourcePath:  req.SourcePath,
 					skeleton:    *skeleton,
 				})
+
+				// Record successful plan hash in the lock.
+				if r.locker != nil {
+					planHash := r.computePlanHash(req.Name)
+					if planHash != "" {
+						r.locker.Lock("plan:"+req.Name, planHash)
+					}
+				}
 			}
 		}
 	}
 	return results, nil
+}
+
+// astImplToSkeleton converts an AST ImplDecl to a SkeletonImpl,
+// extracting instruction text and [use]/[target] directives from body segments.
+func astImplToSkeleton(impl *ast.ImplDecl) tools.SkeletonImpl {
+	si := tools.SkeletonImpl{
+		Name:   impl.Name,
+		Action: "update",
+	}
+	si.Instruction = render.BodyText(impl.Body)
+	for _, seg := range impl.Body {
+		switch s := seg.(type) {
+		case *ast.UseRefSegment:
+			si.Uses = append(si.Uses, s.Name)
+		case *ast.TargetRefSegment:
+			si.Target = s.Name
+		}
+	}
+	return si
+}
+
+// saveLock persists the lock file to disk if a locker is configured.
+func (r *Runner) saveLock() error {
+	if r.locker != nil {
+		return r.locker.Save()
+	}
+	return nil
+}
+
+// computePlanHash extracts source-level text from the plan's AST and hashes it.
+func (r *Runner) computePlanHash(planName string) string {
+	f := r.prog.File()
+	if f == nil {
+		return ""
+	}
+	for _, decl := range f.Declarations {
+		pd, ok := decl.(*ast.PlanDecl)
+		if !ok || pd.Name != planName {
+			continue
+		}
+		var specTexts []string
+		for _, spec := range pd.Specs {
+			specTexts = append(specTexts, render.BodyText(spec.Body))
+		}
+		var constraintTexts []string
+		for _, c := range pd.Constraints {
+			constraintTexts = append(constraintTexts, render.BodyText(c.Body))
+		}
+		var implEntries []locker.ImplEntry
+		for _, impl := range pd.Impls {
+			implEntries = append(implEntries, locker.ImplEntry{
+				Name:     impl.Name,
+				BodyText: render.BodyText(impl.Body),
+			})
+		}
+		return locker.HashPlan(pd.Name, pd.Targets, specTexts, constraintTexts, implEntries)
+	}
+	return ""
+}
+
+// fillLockedSkeletons adds skeleton results for plans that were skipped by the
+// architect (locked). The skeletons are built from the existing AST impls,
+// which were saved from a previous run.
+func (r *Runner) fillLockedSkeletons(archSkeletons []planSkeletonResult) []planSkeletonResult {
+	handled := map[string]bool{}
+	for _, s := range archSkeletons {
+		handled[s.planName] = true
+	}
+	programSkeletons := r.buildSkeletonsFromProgram()
+	for _, ps := range programSkeletons {
+		if !handled[ps.planName] {
+			archSkeletons = append(archSkeletons, ps)
+		}
+	}
+	return archSkeletons
+}
+
+// mergeImpls merges architect-generated impls with the user's AST impls.
+// Architect impls are the base; user AST impls provide [use] overrides.
+// Impls with action "remove" are filtered out.
+func (r *Runner) mergeImpls(skeletons []planSkeletonResult) {
+	planIndex := map[string]*ast.PlanDecl{}
+	if f := r.prog.File(); f != nil {
+		for _, decl := range f.Declarations {
+			if pd, ok := decl.(*ast.PlanDecl); ok {
+				planIndex[pd.Name] = pd
+			}
+		}
+	}
+	for i, skel := range skeletons {
+		plan := planIndex[skel.planName]
+
+		// Index user's AST impls by name.
+		astIndex := map[string]*ast.ImplDecl{}
+		if plan != nil {
+			for _, impl := range plan.Impls {
+				astIndex[impl.Name] = impl
+			}
+		}
+
+		// Filter and merge architect impls with user overrides.
+		var merged []tools.SkeletonImpl
+		for _, archImpl := range skel.skeleton.Impls {
+			if archImpl.Action == "remove" {
+				continue
+			}
+			// If user has a matching AST impl, preserve user's [use] directives.
+			if userImpl, ok := astIndex[archImpl.Name]; ok {
+				astSkel := astImplToSkeleton(userImpl)
+				if len(astSkel.Uses) > 0 {
+					archImpl.Uses = astSkel.Uses
+				}
+				if astSkel.Target != "" {
+					archImpl.Target = astSkel.Target
+				}
+			}
+			merged = append(merged, archImpl)
+		}
+		skeletons[i].skeleton.Impls = merged
+	}
 }
