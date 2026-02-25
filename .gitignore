@@ -1,5 +1,4 @@
 
 *.sh
-./vai
 **/target/*
 **/build/*
