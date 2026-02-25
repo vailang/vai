@@ -2,3 +2,9 @@
 *.sh
 **/target/*
 **/build/*
+*.md
+
+!CLAUDE.md
+!README.md
+!GEMINI.md
+!agents.md
