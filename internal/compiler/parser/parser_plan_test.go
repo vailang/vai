@@ -74,6 +74,51 @@ func TestParsePlanWithImpl(t *testing.T) {
 	}
 }
 
+func TestParseImplInvalidNames(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"colons", `plan P { impl fmt::Display { do something } }`},
+		{"space", `plan P { impl my func { do something } }`},
+		{"hyphen", `plan P { impl add-item { do something } }`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, errs := parseSource(tt.input)
+			if len(errs) == 0 {
+				t.Errorf("expected parse errors for %q, got none", tt.name)
+			}
+		})
+	}
+}
+
+func TestParseImplValidNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantName string
+	}{
+		{"camelCase", `plan P { impl fmtDisplayCalcError { do something } }`, "fmtDisplayCalcError"},
+		{"snake_case", `plan P { impl add_item { do something } }`, "add_item"},
+		{"acronym", `plan P { impl handleHTTPRequest { do something } }`, "handleHTTPRequest"},
+		{"dotted", `plan P { impl Lexer.new { do something } }`, "Lexer.new"},
+		{"dotted_snake", `plan P { impl Parser.parse_expr { do something } }`, "Parser.parse_expr"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := mustParse(t, tt.input)
+			pd := file.Declarations[0].(*ast.PlanDecl)
+			if len(pd.Impls) != 1 {
+				t.Fatalf("expected 1 impl, got %d", len(pd.Impls))
+			}
+			if pd.Impls[0].Name != tt.wantName {
+				t.Errorf("impl name = %q, want %q", pd.Impls[0].Name, tt.wantName)
+			}
+		})
+	}
+}
+
 func TestParsePlanWithInject(t *testing.T) {
 	file := mustParse(t, `plan runner {
   inject setup

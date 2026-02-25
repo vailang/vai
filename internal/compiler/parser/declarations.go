@@ -92,19 +92,39 @@ func (p *Parser) parseSpec() *ast.SpecDecl {
 }
 
 // parseImpl parses an impl block with a name identifier and body.
-// Syntax: impl name { body }
+// Syntax: impl name { body } or impl Type.method { body }
 func (p *Parser) parseImpl() *ast.ImplDecl {
 	pos := tokenPos(p.current)
 	p.expect(lexer.IMPL)
 
+	if p.current.Type != lexer.IDENT {
+		p.errorf("impl name must be a valid identifier, got %s (%q)", p.current.Type, p.current.Val)
+		p.synchronize()
+		return &ast.ImplDecl{Pos: pos}
+	}
 	name := p.expect(lexer.IDENT)
+	fullName := name.Val
+
+	// Support dotted names: impl Type.method { ... }
+	if p.current.Type == lexer.DOT {
+		p.advance() // consume .
+		part := p.expect(lexer.IDENT)
+		fullName = fullName + "." + part.Val
+	}
+
+	// If the opening brace is missing, skip to recovery point.
+	if p.current.Type != lexer.LBRACE {
+		p.errorf("expected '{' after impl name, got %s (%q)", p.current.Type, p.current.Val)
+		p.synchronize()
+		return &ast.ImplDecl{Name: fullName, Pos: pos}
+	}
 
 	p.expect(lexer.LBRACE)
 	body := p.parseBody()
 	p.expect(lexer.RBRACE)
 
 	return &ast.ImplDecl{
-		Name: name.Val,
+		Name: fullName,
 		Body: body,
 		Pos:  pos,
 	}
