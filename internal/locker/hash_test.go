@@ -43,40 +43,28 @@ func TestNormalizeStability(t *testing.T) {
 }
 
 func TestHashPlan(t *testing.T) {
-	h1 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a todo app"}, nil, nil)
-	h2 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a todo app"}, nil, nil)
+	h1 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a todo app"}, nil)
+	h2 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a todo app"}, nil)
 	if h1 != h2 {
 		t.Error("identical inputs should produce identical hashes")
 	}
 
 	// Different spec text should produce different hash.
-	h3 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a chat app"}, nil, nil)
+	h3 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a chat app"}, nil)
 	if h1 == h3 {
 		t.Error("different spec text should produce different hashes")
 	}
 
 	// Different plan name should produce different hash.
-	h4 := HashPlan("other", []string{"main.rs"}, []string{"Build a todo app"}, nil, nil)
+	h4 := HashPlan("other", []string{"main.rs"}, []string{"Build a todo app"}, nil)
 	if h1 == h4 {
 		t.Error("different plan name should produce different hashes")
 	}
-}
 
-func TestHashPlanWithImpls(t *testing.T) {
-	impls := []ImplEntry{
-		{Name: "add", BodyText: "add a new todo item"},
-		{Name: "remove", BodyText: "remove a todo item by id"},
-	}
-	h1 := HashPlan("plan", []string{"main.rs"}, []string{"spec"}, nil, impls)
-
-	// Reorder impls — should produce different hash (order matters).
-	impls2 := []ImplEntry{
-		{Name: "remove", BodyText: "remove a todo item by id"},
-		{Name: "add", BodyText: "add a new todo item"},
-	}
-	h2 := HashPlan("plan", []string{"main.rs"}, []string{"spec"}, nil, impls2)
-	if h1 == h2 {
-		t.Error("different impl order should produce different hashes")
+	// Different constraints should produce different hash.
+	h5 := HashPlan("myplan", []string{"main.rs"}, []string{"Build a todo app"}, []string{"no panics"})
+	if h1 == h5 {
+		t.Error("different constraints should produce different hashes")
 	}
 }
 

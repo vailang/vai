@@ -19,6 +19,11 @@
     "impl:calc.Lexer.tokenize": {
       "hash": "c70b3976dfd2d59edb4c26f3ff2c5ea452ddf0d847719e4926783ec021caa025"
     },
+    "impl:calc.LexerImpl": {
+      "hash": "d3e78cd5f345a22ab4633d071e0376247f7d7ce84714a6988b90464ee425b5ea",
+      "tokens_in": 1305,
+      "tokens_out": 723
+    },
     "impl:calc.Parser.new": {
       "hash": "603f2629eea12e4107456768d73b9013e3a2739b51455fa06c1d97fbf041bd57"
     },
@@ -33,6 +38,11 @@
     },
     "impl:calc.Parser.parse_term": {
       "hash": "35e406a307a5a5bb6e3dbda6e1a403a182834aad896f8d09f2afb6b4c05ade18"
+    },
+    "impl:calc.ParserImpl": {
+      "hash": "b097a03ded011ecf4127a38fe0f21c4efd0c200ae8fba3c1a35519849ce5d083",
+      "tokens_in": 1433,
+      "tokens_out": 836
     },
     "impl:calc.calculate": {
       "hash": "1518038f031f07f8b0b2217feb8e86baf81bac6af241521bdce9c186e376a39e"
@@ -50,7 +60,9 @@
       "hash": "4a7e9f386b9c346a7a4bba193b5dd06f67ba4e9b55bac1597821f264fc867c69"
     },
     "plan:calc": {
-      "hash": "83b5bd278e5d8bdaeb817616eaadebe51811ba4f7b1bc444c4ddf24b68a08f08"
+      "hash": "b9213b52f69492ae9100a7c7de1c1a15001d8c7fbb540ed2bd66c90703adbab4",
+      "tokens_in": 6757,
+      "tokens_out": 1987
     }
   }
 }

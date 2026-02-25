@@ -7,24 +7,15 @@ import (
 	"unicode"
 )
 
-// ImplEntry holds an impl's name and body text for plan hashing.
-type ImplEntry struct {
-	Name     string
-	BodyText string
-}
-
-// HashPlan computes a stable hash for a plan's source-level text.
-// The hash covers the plan name, target paths, spec texts, constraint texts,
-// and impl names + body texts — all normalized to reduce false invalidations.
-func HashPlan(name string, targets []string, specTexts, constraintTexts []string, implEntries []ImplEntry) string {
+// HashPlan computes a stable hash for a plan's user-controlled content.
+// The hash covers the plan name, target paths, spec texts, and constraint texts.
+// Impl entries are excluded — they are skeleton-generated, not user-controlled.
+func HashPlan(name string, targets []string, specTexts, constraintTexts []string) string {
 	var parts []string
 	parts = append(parts, name)
 	parts = append(parts, targets...)
 	parts = append(parts, specTexts...)
 	parts = append(parts, constraintTexts...)
-	for _, e := range implEntries {
-		parts = append(parts, e.Name, e.BodyText)
-	}
 	return computeHash(parts...)
 }
 

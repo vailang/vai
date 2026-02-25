@@ -9,9 +9,11 @@ import (
 
 const lockFileName = "vai.lock"
 
-// LockEntry represents a single locked request.
+// LockEntry represents a single locked request with optional token usage.
 type LockEntry struct {
-	Hash string `json:"hash"`
+	Hash      string `json:"hash"`
+	TokensIn  int    `json:"tokens_in,omitempty"`
+	TokensOut int    `json:"tokens_out,omitempty"`
 }
 
 // LockFile represents the vai.lock file contents.
@@ -55,6 +57,21 @@ func (l *Locker) Lock(key, hash string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.data.Entries[key] = LockEntry{Hash: hash}
+}
+
+// LockWithTokens records a hash and token usage for the given key.
+func (l *Locker) LockWithTokens(key, hash string, tokensIn, tokensOut int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.data.Entries[key] = LockEntry{Hash: hash, TokensIn: tokensIn, TokensOut: tokensOut}
+}
+
+// GetTokens returns the stored token counts for the given key.
+func (l *Locker) GetTokens(key string) (int, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e := l.data.Entries[key]
+	return e.TokensIn, e.TokensOut
 }
 
 // Save writes the lock file to disk as indented JSON.

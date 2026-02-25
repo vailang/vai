@@ -59,7 +59,8 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 		tokensOut int
 		err       error
 		cached    bool
-		textLen   int // length of instruction text (for token estimate)
+		savedIn   int // actual tokens saved (from lock)
+		savedOut  int
 	}
 
 	var wg sync.WaitGroup
@@ -76,17 +77,18 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 				implHash := locker.HashImpl(t.impl.Name, t.impl.Instruction, t.targetPath)
 				if r.locker.IsLocked("impl:"+qualName, implHash) {
 					r.emit(Event{Kind: EventInfo, Step: "executor", Name: qualName, Message: fmt.Sprintf("impl %q is locked, skipping", qualName)})
-					resultCh <- implResult{name: qualName, cached: true, textLen: len(t.impl.Instruction)}
+					sIn, sOut := r.locker.GetTokens("impl:" + qualName)
+					resultCh <- implResult{name: qualName, cached: true, savedIn: sIn, savedOut: sOut}
 					return
 				}
 			}
 
 			tokIn, tokOut, err := r.executeImpl(ctx, system, t.planName, t.targetPath, t.impl)
 
-			// Record successful impl hash in the lock.
+			// Record successful impl hash and token usage in the lock.
 			if err == nil && r.locker != nil {
 				implHash := locker.HashImpl(t.impl.Name, t.impl.Instruction, t.targetPath)
-				r.locker.Lock("impl:"+qualName, implHash)
+				r.locker.LockWithTokens("impl:"+qualName, implHash, tokIn, tokOut)
 			}
 
 			resultCh <- implResult{
@@ -101,12 +103,12 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 	wg.Wait()
 	close(resultCh)
 
-	var savedTextLen int
 	var errs []error
 	for res := range resultCh {
 		if res.cached {
 			r.stats.CachedImpls++
-			savedTextLen += res.textLen
+			r.stats.SavedTokensIn += res.savedIn
+			r.stats.SavedTokensOut += res.savedOut
 			r.stats.ImplStats = append(r.stats.ImplStats, ImplStat{
 				Name:   res.name,
 				Status: StatusSkipped,
@@ -124,9 +126,6 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 			TokensOut: res.tokensOut,
 			Status:    status,
 		})
-	}
-	if savedTextLen > 0 {
-		r.stats.SavedTokensEstimate = EstimateTokensSaved(savedTextLen)
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("%d impl(s) failed: %v", len(errs), errs[0])

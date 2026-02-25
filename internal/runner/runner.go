@@ -21,6 +21,8 @@ import (
 type RequestLocker interface {
 	IsLocked(key, hash string) bool
 	Lock(key, hash string)
+	LockWithTokens(key, hash string, tokensIn, tokensOut int)
+	GetTokens(key string) (int, int)
 	Save() error
 }
 
@@ -53,18 +55,10 @@ type RunStats struct {
 	DebugTokensOut     int        `json:"debug_tokens_out"`
 	DebugCalls         int        `json:"debug_calls"`
 	DebugStatus        StepStatus `json:"debug_status"`
-	CachedPlans        int        `json:"cached_plans"`
-	CachedImpls        int        `json:"cached_impls"`
-	SavedTokensEstimate string   `json:"saved_tokens_estimate,omitempty"`
-}
-
-// EstimateTokensSaved returns an approximate token count saved by cache hits.
-// Uses the heuristic of ~4 characters per token, prefixed with ~ to indicate approximation.
-func EstimateTokensSaved(textLen int) string {
-	if textLen == 0 {
-		return ""
-	}
-	return fmt.Sprintf("~%d", textLen/4)
+	CachedPlans    int `json:"cached_plans"`
+	CachedImpls    int `json:"cached_impls"`
+	SavedTokensIn  int `json:"saved_tokens_in,omitempty"`
+	SavedTokensOut int `json:"saved_tokens_out,omitempty"`
 }
 
 // Runner orchestrates the 5-step pipeline:
@@ -441,6 +435,9 @@ func (r *Runner) architect(ctx context.Context) ([]planSkeletonResult, error) {
 			if planHash != "" && r.locker.IsLocked("plan:"+req.Name, planHash) {
 				r.emit(Event{Kind: EventInfo, Step: "architect", Name: req.Name, Message: fmt.Sprintf("plan %q is locked, skipping", req.Name)})
 				r.stats.CachedPlans++
+				savedIn, savedOut := r.locker.GetTokens("plan:" + req.Name)
+				r.stats.SavedTokensIn += savedIn
+				r.stats.SavedTokensOut += savedOut
 				continue
 			}
 		}
@@ -487,11 +484,11 @@ func (r *Runner) architect(ctx context.Context) ([]planSkeletonResult, error) {
 					skeleton:    *skeleton,
 				})
 
-				// Record successful plan hash in the lock.
+				// Record successful plan hash and token usage in the lock.
 				if r.locker != nil {
 					planHash := r.computePlanHash(req.Name)
 					if planHash != "" {
-						r.locker.Lock("plan:"+req.Name, planHash)
+						r.locker.LockWithTokens("plan:"+req.Name, planHash, resp.TokensIn, resp.TokensOut)
 					}
 				}
 			}
@@ -546,14 +543,7 @@ func (r *Runner) computePlanHash(planName string) string {
 		for _, c := range pd.Constraints {
 			constraintTexts = append(constraintTexts, render.BodyText(c.Body))
 		}
-		var implEntries []locker.ImplEntry
-		for _, impl := range pd.Impls {
-			implEntries = append(implEntries, locker.ImplEntry{
-				Name:     impl.Name,
-				BodyText: render.BodyText(impl.Body),
-			})
-		}
-		return locker.HashPlan(pd.Name, pd.Targets, specTexts, constraintTexts, implEntries)
+		return locker.HashPlan(pd.Name, pd.Targets, specTexts, constraintTexts)
 	}
 	return ""
 }
