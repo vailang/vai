@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/vailang/vai/internal/runner"
 )
@@ -18,8 +19,9 @@ const (
 
 // UI consumes runner events and produces formatted output.
 type UI struct {
-	mode   OutputMode
-	events []runner.Event // collected for JSON mode
+	mode      OutputMode
+	events    []runner.Event // collected for JSON mode
+	hasStatus bool          // true if a transient status line is currently displayed
 }
 
 // New creates a UI with the specified output mode.
@@ -40,32 +42,52 @@ func (u *UI) Consume(events <-chan runner.Event) {
 	}
 }
 
+// printStatus writes a transient status line that will be overwritten by the next event.
+func (u *UI) printStatus(msg string) {
+	u.clearStatus()
+	fmt.Printf("\r    %s", msg)
+	u.hasStatus = true
+}
+
+// clearStatus erases the current transient status line.
+func (u *UI) clearStatus() {
+	if u.hasStatus {
+		fmt.Printf("\r%s\r", strings.Repeat(" ", 72))
+		u.hasStatus = false
+	}
+}
+
 // printTerminal formats and prints a single event to the terminal.
 func (u *UI) printTerminal(ev runner.Event) {
 	switch ev.Kind {
 	case runner.EventStepStart:
+		u.clearStatus()
 		fmt.Printf("==> %s: %s\n", ev.Step, ev.Message)
 	case runner.EventStepComplete:
-		// Silent — next step header is enough.
+		u.clearStatus()
 	case runner.EventStepFailed:
+		u.clearStatus()
 		fmt.Fprintf(os.Stderr, "==> %s: FAILED: %s\n", ev.Step, ev.Message)
 	case runner.EventInfo:
-		fmt.Printf("    %s\n", ev.Message)
+		u.printStatus(ev.Message)
 	case runner.EventWarning:
+		u.clearStatus()
 		fmt.Fprintf(os.Stderr, "    warning: %s\n", ev.Message)
 	case runner.EventImplStart:
-		fmt.Printf("    executor: %s\n", ev.Name)
+		u.printStatus("executor: " + ev.Name)
 	case runner.EventSkeleton:
-		// Skeleton details: show plan name and counts.
+		u.clearStatus()
 		if skel, ok := ev.Data.(runner.SkeletonData); ok {
 			fmt.Printf("    skeleton for %q: %d imports, %d declarations, %d impls\n",
 				ev.Name, skel.ImportCount, skel.DeclCount, skel.ImplCount)
 		}
 	case runner.EventSummary:
+		u.clearStatus()
 		if stats, ok := ev.Data.(runner.RunStats); ok {
 			u.printSummaryTable(stats)
 		}
 	case runner.EventDone:
+		u.clearStatus()
 		fmt.Println("==> Done.")
 	}
 }
@@ -115,6 +137,18 @@ func (u *UI) printSummaryTable(s runner.RunStats) {
 		fmt.Printf("    %-20s %-10s  %6d   %9d   %10d\n",
 			"Debug", debugStatus, s.DebugCalls,
 			s.DebugTokensIn, s.DebugTokensOut)
+	}
+
+	// Cache stats.
+	cached := s.CachedPlans + s.CachedImpls
+	if cached > 0 {
+		cachedLabel := fmt.Sprintf("%d cached", cached)
+		savedLabel := ""
+		if s.SavedTokensEstimate != "" {
+			savedLabel = s.SavedTokensEstimate + " saved"
+		}
+		fmt.Printf("    %-20s             %s              %s\n",
+			"Cache", cachedLabel, savedLabel)
 	}
 
 	fmt.Println("    -------------------  ----------  ------   ---------   ----------")
