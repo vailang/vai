@@ -49,32 +49,36 @@ func PlanSkeletonTool() provider.ToolDefinition {
 						"required": []string{"kind", "name", "action"},
 					},
 				},
-			},
-			"impls": map[string]any{
-				"type":        "array",
-				"description": "Implementation instructions for each function. One impl per function declaration. Concise, technical, imperative tone.",
-				"items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"name": map[string]any{
-							"type":        "string",
-							"description": "Must match a function declaration name exactly.",
+				"impls": map[string]any{
+					"type":        "array",
+					"description": "Implementation instructions for each function. One impl per function declaration. Describe the role and output behavior, not step-by-step implementation.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"name": map[string]any{
+								"type":        "string",
+								"description": "Must match a function declaration name exactly.",
+							},
+							"action": map[string]any{
+								"type": "string",
+								"enum": []string{"add", "update", "remove", "keep"},
+							},
+							"instruction": map[string]any{
+								"type":        "string",
+								"description": "High-level instruction describing the function's role and output behavior. Use \\n for multi-line formatting. Do NOT write pseudocode. The compiler resolves [use] dependencies into actual signatures via tree-sitter. Example: 'Initialize the component from configuration.\\nValidate required fields and set defaults.'",
+							},
+							"uses": map[string]any{
+								"type":        "array",
+								"description": "Symbol dependencies this impl needs. The compiler resolves each to actual signatures via tree-sitter.",
+								"items":       map[string]any{"type": "string"},
+							},
+							"target": map[string]any{
+								"type":        "string",
+								"description": "Target file path for this impl.",
+							},
 						},
-						"action": map[string]any{
-							"type": "string",
-							"enum": []string{"add", "update", "remove", "keep"},
-						},
-						"instruction": map[string]any{
-							"type":        "string",
-							"description": "Concise technical instruction for the executor. Imperative tone, no filler. Example: 'Match on op: + => Ok(a+b), - => Ok(a-b), * => Ok(a*b), / => guard b==0 then Err(DivisionByZero) else Ok(a/b).'",
-						},
-						"uses": map[string]any{
-							"type":        "array",
-							"description": "Symbol dependencies this impl needs.",
-							"items":       map[string]any{"type": "string"},
-						},
+						"required": []string{"name", "action", "instruction"},
 					},
-					"required": []string{"name", "action", "instruction"},
 				},
 			},
 			"required": []string{"imports", "declarations", "impls"},

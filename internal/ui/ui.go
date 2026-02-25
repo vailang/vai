@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rodaine/table"
 	"github.com/vailang/vai/internal/runner"
 )
 
@@ -95,19 +96,20 @@ func (u *UI) printTerminal(ev runner.Event) {
 // printSummaryTable prints the token usage summary table.
 func (u *UI) printSummaryTable(s runner.RunStats) {
 	fmt.Println("\n==> Summary")
-	fmt.Println("    Step                 Status      Cycles   Tokens In   Tokens Out")
-	fmt.Println("    -------------------  ----------  ------   ---------   ----------")
 
+	tbl := table.New("Step", "Status", "Cycles", "Tokens In", "Tokens Out")
+	tbl.WithWriter(os.Stdout)
+	tbl.WithPadding(2)
+
+	// Architect row.
 	archStatus := s.ArchitectStatus
 	if archStatus == "" {
 		archStatus = runner.StatusSkipped
 	}
-	fmt.Printf("    %-20s %-10s  %6d   %9d   %10d\n",
-		"Architect", archStatus, s.ArchitectCycles,
-		s.ArchitectTokensIn, s.ArchitectTokensOut)
+	tbl.AddRow("Architect", archStatus, s.ArchitectCycles, s.ArchitectTokensIn, s.ArchitectTokensOut)
 
-	execIn, execOut := 0, 0
-	execFailed := 0
+	// Executor aggregate row.
+	execIn, execOut, execFailed := 0, 0, 0
 	for _, is := range s.ImplStats {
 		execIn += is.TokensIn
 		execOut += is.TokensOut
@@ -122,41 +124,37 @@ func (u *UI) printSummaryTable(s runner.RunStats) {
 	if len(s.ImplStats) == 0 {
 		execStatus = runner.StatusSkipped
 	}
-	fmt.Printf("    %-20s %-10s  %6d   %9d   %10d\n",
-		"Executor", execStatus, len(s.ImplStats), execIn, execOut)
+	tbl.AddRow("Executor", execStatus, len(s.ImplStats), execIn, execOut)
 	for _, is := range s.ImplStats {
-		fmt.Printf("      - %-18s %-10s           %9d   %10d\n",
-			is.Name, is.Status, is.TokensIn, is.TokensOut)
+		tbl.AddRow("  - "+is.Name, is.Status, "", is.TokensIn, is.TokensOut)
 	}
 
+	// Debug row (optional).
 	if s.DebugCalls > 0 || s.DebugStatus != "" {
 		debugStatus := s.DebugStatus
 		if debugStatus == "" {
 			debugStatus = runner.StatusSkipped
 		}
-		fmt.Printf("    %-20s %-10s  %6d   %9d   %10d\n",
-			"Debug", debugStatus, s.DebugCalls,
-			s.DebugTokensIn, s.DebugTokensOut)
+		tbl.AddRow("Debug", debugStatus, s.DebugCalls, s.DebugTokensIn, s.DebugTokensOut)
 	}
 
-	// Cache stats.
+	// Cache row (optional).
 	cached := s.CachedPlans + s.CachedImpls
 	if cached > 0 {
-		cachedLabel := fmt.Sprintf("%d cached", cached)
 		savedLabel := ""
-		if s.SavedTokensEstimate != "" {
-			savedLabel = s.SavedTokensEstimate + " saved"
+		if s.SavedTokensIn > 0 || s.SavedTokensOut > 0 {
+			savedLabel = fmt.Sprintf("%d in / %d out saved", s.SavedTokensIn, s.SavedTokensOut)
 		}
-		fmt.Printf("    %-20s             %s              %s\n",
-			"Cache", cachedLabel, savedLabel)
+		tbl.AddRow("Cache", fmt.Sprintf("%d cached", cached), "", "", savedLabel)
 	}
 
-	fmt.Println("    -------------------  ----------  ------   ---------   ----------")
+	// Total row.
 	totalCycles := s.ArchitectCycles + len(s.ImplStats) + s.DebugCalls
 	totalIn := s.ArchitectTokensIn + execIn + s.DebugTokensIn
 	totalOut := s.ArchitectTokensOut + execOut + s.DebugTokensOut
-	fmt.Printf("    %-20s             %6d   %9d   %10d\n",
-		"Total", totalCycles, totalIn, totalOut)
+	tbl.AddRow("Total", "", totalCycles, totalIn, totalOut)
+
+	tbl.Print()
 }
 
 // jsonOutput is the JSON output structure.
