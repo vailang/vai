@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "entries": {
+    "impl:calc.Lexer.consume": {
+      "hash": "aea90ca92f80fbeac9a603d6270cc267a3d264e2ce16989db4dbe4a65815238f"
+    },
+    "impl:calc.Lexer.new": {
+      "hash": "5863594392e21cc3623515bc8831105f217a5441a4e4e38a06b03ba8530aca17"
+    },
+    "impl:calc.Lexer.peek": {
+      "hash": "cd96b2076e442505144eb7b8f09d9df26e277f20563d46f139149930efb08482"
+    },
+    "impl:calc.Lexer.read_number": {
+      "hash": "2ef556e0c7addba4595a64c2a7bfe9273300348b6187d8573c72d124632bbd20"
+    },
+    "impl:calc.Lexer.skip_whitespace": {
+      "hash": "f7b84d0b49e5cfcaa98042ef44e58f9f58db92ac7892e2caa2e20b6a7087ae9c"
+    },
+    "impl:calc.Lexer.tokenize": {
+      "hash": "c70b3976dfd2d59edb4c26f3ff2c5ea452ddf0d847719e4926783ec021caa025"
+    },
+    "impl:calc.Parser.new": {
+      "hash": "603f2629eea12e4107456768d73b9013e3a2739b51455fa06c1d97fbf041bd57"
+    },
+    "impl:calc.Parser.parse": {
+      "hash": "9ddd0a668bc6d1b16d014e260b5be88e340cc8e32dcf76a1f07665c62d048bc8"
+    },
+    "impl:calc.Parser.parse_expr": {
+      "hash": "e6b24a00807fdf67df9e11baf8a583a653b2f7add5a1d2a49eb2fe1d87a60a7a"
+    },
+    "impl:calc.Parser.parse_factor": {
+      "hash": "c2c838def19ca67b75b073b6063fa1cae1d4bc8ab04dbfd912b5706b177a9918"
+    },
+    "impl:calc.Parser.parse_term": {
+      "hash": "35e406a307a5a5bb6e3dbda6e1a403a182834aad896f8d09f2afb6b4c05ade18"
+    },
+    "impl:calc.calculate": {
+      "hash": "1518038f031f07f8b0b2217feb8e86baf81bac6af241521bdce9c186e376a39e"
+    },
+    "impl:calc.fmtDisplayCalcError": {
+      "hash": "81c8d09f449e16b8fe028871a5f367a78a2651f6e348db1373e4b82572fc6d80"
+    },
+    "impl:calc.main": {
+      "hash": "b8a2f2e7090e01c65d2009b481331d9cc7f4edb6cac748f803f2b07a948b5e7b"
+    },
+    "impl:calc.parse_input": {
+      "hash": "b13f7d2832f3dfaec8d15b2bf752072f2adae61fb8b0e1445dd8977d72e5df67"
+    },
+    "impl:calc.print_help": {
+      "hash": "4a7e9f386b9c346a7a4bba193b5dd06f67ba4e9b55bac1597821f264fc867c69"
+    },
+    "plan:calc": {
+      "hash": "83b5bd278e5d8bdaeb817616eaadebe51811ba4f7b1bc444c4ddf24b68a08f08"
+    }
+  }
+}
