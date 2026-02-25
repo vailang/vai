@@ -1,49 +1,107 @@
-
-
-
 plan calc {
     target "src/main.rs"
     spec {
-        Create an interactive calculator that can perform basic arithmetic operations 
-        (addition, subtraction, multiplication, division) and handle user input. 
-        The calculator should be able to display results and allow users to perform multiple 
+        Create an interactive calculator that can perform basic arithmetic operations
+        (addition, subtraction, multiplication, division) and handle user input.
+        The calculator should be able to display results and allow users to perform multiple
         calculations in a session.
         support skip space, and multiple op in single expression with parenthesis.
-        example: 1 + 2 * (3 - 4) / 5 
+        example: 1 + 2 * (3 - 4) / 5
         create an lexer to tokenize the input, and a parser to build an abstract syntax tree (AST) for evaluation.
     }
 
     impl fmtDisplayCalcError {
         [target "src/main.rs"]
-        Match on self: CalcError::DivisionByZero => write!(f, "Error: Division by zero"), CalcError::InvalidOperator(c) => write!(f, "Error: Invalid operator '{}'", c), CalcError::ParseError(s) => write!(f, "Error: Parse error - {}", s), CalcError::UnexpectedToken(t) => write!(f, "Error: Unexpected token {:?}", t), CalcError::UnexpectedEof => write!(f, "Error: Unexpected end of input").
+        Format each CalcError variant into a human-readable message.
+                DivisionByZero: 'Division by zero'.
+                InvalidOperator: include the offending char.
+                ParseError: include the inner string.
+                UnexpectedToken: include the token's Debug representation via {:?}.
+                UnexpectedEof: 'Unexpected end of input'.
         [use CalcError]
+        [use Token]
     }
 
-    impl LexerImpl {
+    impl implLexer {
         [target "src/main.rs"]
-        new: Return Lexer { chars: input.chars().peekable() }. peek: Return self.chars.peek().copied(). consume: Call self.chars.next().unwrap() and return the char. skip_whitespace: While self.chars.peek() is Some(&c) and c.is_ascii_whitespace(), call self.chars.next() to discard. read_number: Build let mut s = first.to_string(). While self.chars.peek() is Some(&c) and (c.is_ascii_digit() || c == '.'), call self.chars.next() and push c to s. Parse s.parse::<f64>().map_err(|e| CalcError::ParseError(e.to_string())). Return Ok(Token::Number(n)). tokenize: Declare let mut tokens = Vec::new(). Loop: call self.skip_whitespace(). Match self.peek(): None => break. Some(ch) => match ch: '0'..='9' | '.' => consume ch, call self.read_number(ch)? and push result. '+' => self.consume(), push Token::Plus. '-' => self.consume(), push Token::Minus. '*' => self.consume(), push Token::Star. '/' => self.consume(), push Token::Slash. '(' => self.consume(), push Token::LParen. ')' => self.consume(), push Token::RParen. c => return Err(CalcError::InvalidOperator(c)). After loop return Ok(tokens).
+        Implement all Lexer methods.
+                
+                new: store input.chars().peekable() in the struct.
+                peek: copied() on self.chars.peek() to return Option<char>.
+                consume: call self.chars.next().unwrap().
+                skip_whitespace: loop while peek() is Some whitespace, consuming each.
+                read_number: build a String starting with `first`, appending while peek() is digit or '.', then parse::<f64>() returning ParseError on failure.
+                tokenize: loop calling skip_whitespace then peek; map operator chars to Token variants, digits/dots to read_number; return InvalidOperator for unknowns; stop at None.
         [use Lexer]
         [use Token]
         [use CalcError]
     }
 
-    impl ParserImpl {
+    impl implParser {
         [target "src/main.rs"]
-        new: Return Parser { tokens: tokens.into_iter().peekable() }. parse: Call self.parse_expr()? to get expr. Match self.tokens.next(): Some(t) => return Err(CalcError::UnexpectedToken(t)), None => return Ok(expr). parse_expr: Call self.parse_term()? for left. Loop: match self.tokens.peek(): Some(Token::Plus) => self.tokens.next(), op='+', call self.parse_term()? for right, set left = Expr::BinaryOp { left: Box::new(left), op, right: Box::new(right) }. Some(Token::Minus) => self.tokens.next(), op='-', same pattern. _ => break. Return Ok(left). parse_term: Call self.parse_factor()? for left. While let Some(token) = self.tokens.peek(): match token: Token::Star => op='*', Token::Slash => op='/', _ => break. Consume self.tokens.next(). Call self.parse_factor()? for right. Set left = Expr::BinaryOp { left: Box::new(left), op, right: Box::new(right) }. Return Ok(left). parse_factor: Match self.tokens.next(): Some(Token::Number(n)) => return Ok(Expr::Number(n)). Some(Token::Minus) => call self.parse_factor()? as inner, return Ok(Expr::UnaryMinus(Box::new(inner))). Some(Token::LParen) => call self.parse_expr()? as inner, match self.tokens.next(): Some(Token::RParen) => return Ok(inner), Some(_t) => return Err(CalcError::ParseError("Expected ')'".to_string())), None => return Err(CalcError::UnexpectedEof). Some(t) => return Err(CalcError::UnexpectedToken(t)). None => return Err(CalcError::UnexpectedEof).
+        Implement all Parser methods as a recursive-descent parser.
+                
+                new: call tokens.into_iter().peekable().
+                parse: call parse_expr(); if any token remains return UnexpectedToken with that token.
+                parse_expr: call parse_term() then loop consuming Plus/Minus tokens, folding into BinaryOp with '+'/'-' char.
+                parse_term: call parse_factor() then loop consuming Star/Slash tokens, folding into BinaryOp with '*'/'/' char.
+                parse_factor: on Minus consume and wrap recursive parse_factor in UnaryMinus. On LParen call parse_expr then expect/consume RParen (UnexpectedToken if wrong). On Number consume and return Expr::Number. On None return UnexpectedEof. Otherwise return UnexpectedToken.
         [use Parser]
         [use Token]
         [use Expr]
         [use CalcError]
     }
+
+    impl calculate {
+        [target "src/main.rs"]
+        Dispatch on op char to perform +, -, *, / on a and b.
+                Return DivisionByZero when op is '/' and b is 0.0.
+                Return InvalidOperator for any other char.
+        [use CalcError]
+    }
+
+    impl print_help {
+        [target "src/main.rs"]
+        Print a formatted help message to stdout.
+                List supported operators (+, -, *, /), parentheses support, and an example expression like '1 + 2 * (3 - 4) / 5'.
+                List REPL commands: 'help', 'quit'/'exit'.
+    }
+
+    impl eval {
+        [target "src/main.rs"]
+        Recursively evaluate an Expr node.
+                Number: return the inner f64.
+                UnaryMinus: negate the recursive eval of the child.
+                BinaryOp: eval left, eval right, then call calculate(left, op, right).
+                Propagate any CalcError with ?.
+        [use Expr]
+        [use calculate]
+        [use CalcError]
+    }
+
+    impl run_expression {
+        [target "src/main.rs"]
+        Orchestrate the full lex → parse → eval pipeline.
+                Create Lexer::new(input), call tokenize()?, pass tokens to Parser::new, call parse()?, then eval() and return the result.
+                Propagate any CalcError at each stage.
+        [use Lexer]
+        [use Parser]
+        [use eval]
+        [use CalcError]
+    }
+
+    impl main {
+        [target "src/main.rs"]
+        Run an interactive REPL loop.
+                Print a welcome banner then call print_help().
+                Loop: print '> ' prompt, flush stdout, read a line from stdin (break on EOF).
+                Trim the input; skip empty lines. Dispatch 'help' to print_help(), 'quit'/'exit' to break.
+                Otherwise call run_expression and print the numeric result or the CalcError via Display.
+        [use run_expression]
+        [use print_help]
+        [use CalcError]
+    }
 }
-
-
-
-
-
-
-
-
 
 
 

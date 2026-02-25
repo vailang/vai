@@ -1,68 +1,50 @@
 {
   "version": 1,
   "entries": {
-    "impl:calc.Lexer.consume": {
-      "hash": "aea90ca92f80fbeac9a603d6270cc267a3d264e2ce16989db4dbe4a65815238f"
-    },
-    "impl:calc.Lexer.new": {
-      "hash": "5863594392e21cc3623515bc8831105f217a5441a4e4e38a06b03ba8530aca17"
-    },
-    "impl:calc.Lexer.peek": {
-      "hash": "cd96b2076e442505144eb7b8f09d9df26e277f20563d46f139149930efb08482"
-    },
-    "impl:calc.Lexer.read_number": {
-      "hash": "2ef556e0c7addba4595a64c2a7bfe9273300348b6187d8573c72d124632bbd20"
-    },
-    "impl:calc.Lexer.skip_whitespace": {
-      "hash": "f7b84d0b49e5cfcaa98042ef44e58f9f58db92ac7892e2caa2e20b6a7087ae9c"
-    },
-    "impl:calc.Lexer.tokenize": {
-      "hash": "c70b3976dfd2d59edb4c26f3ff2c5ea452ddf0d847719e4926783ec021caa025"
-    },
-    "impl:calc.LexerImpl": {
-      "hash": "d3e78cd5f345a22ab4633d071e0376247f7d7ce84714a6988b90464ee425b5ea",
-      "tokens_in": 1305,
-      "tokens_out": 723
-    },
-    "impl:calc.Parser.new": {
-      "hash": "603f2629eea12e4107456768d73b9013e3a2739b51455fa06c1d97fbf041bd57"
-    },
-    "impl:calc.Parser.parse": {
-      "hash": "9ddd0a668bc6d1b16d014e260b5be88e340cc8e32dcf76a1f07665c62d048bc8"
-    },
-    "impl:calc.Parser.parse_expr": {
-      "hash": "e6b24a00807fdf67df9e11baf8a583a653b2f7add5a1d2a49eb2fe1d87a60a7a"
-    },
-    "impl:calc.Parser.parse_factor": {
-      "hash": "c2c838def19ca67b75b073b6063fa1cae1d4bc8ab04dbfd912b5706b177a9918"
-    },
-    "impl:calc.Parser.parse_term": {
-      "hash": "35e406a307a5a5bb6e3dbda6e1a403a182834aad896f8d09f2afb6b4c05ade18"
-    },
-    "impl:calc.ParserImpl": {
-      "hash": "b097a03ded011ecf4127a38fe0f21c4efd0c200ae8fba3c1a35519849ce5d083",
-      "tokens_in": 1433,
-      "tokens_out": 836
-    },
     "impl:calc.calculate": {
-      "hash": "1518038f031f07f8b0b2217feb8e86baf81bac6af241521bdce9c186e376a39e"
+      "hash": "0e65b2205c3f33f25f3892580774cfe3f5bb0b74b7bb8d502f3d9fbabdf9ff04",
+      "tokens_in": 1012,
+      "tokens_out": 240
+    },
+    "impl:calc.eval": {
+      "hash": "2d78bf1438442c6fdf86f93f19ca79852eb0580f2f135963c8f0176513035503",
+      "tokens_in": 1071,
+      "tokens_out": 208
     },
     "impl:calc.fmtDisplayCalcError": {
-      "hash": "81c8d09f449e16b8fe028871a5f367a78a2651f6e348db1373e4b82572fc6d80"
+      "hash": "ff605388c8a45dcdc38564321ebfb0f2534a47032f0863a4afbb3a2566bbf0af",
+      "tokens_in": 1016,
+      "tokens_out": 244
+    },
+    "impl:calc.implLexer": {
+      "hash": "d8b80fd7712bd44c4e27e22b74d056f7caff67cbc3ed44b0d474857deb0d80a2",
+      "tokens_in": 1102,
+      "tokens_out": 720
+    },
+    "impl:calc.implParser": {
+      "hash": "032fb51e7acccf75b42fd9f0ef9498dec65d4f686496eb7272ce15ecb0ebede4",
+      "tokens_in": 1141,
+      "tokens_out": 867
     },
     "impl:calc.main": {
-      "hash": "b8a2f2e7090e01c65d2009b481331d9cc7f4edb6cac748f803f2b07a948b5e7b"
-    },
-    "impl:calc.parse_input": {
-      "hash": "b13f7d2832f3dfaec8d15b2bf752072f2adae61fb8b0e1445dd8977d72e5df67"
+      "hash": "fbce22cb4b151724595f0068d88ce68dc2f01e95071320718893d3425cc21297",
+      "tokens_in": 1078,
+      "tokens_out": 353
     },
     "impl:calc.print_help": {
-      "hash": "4a7e9f386b9c346a7a4bba193b5dd06f67ba4e9b55bac1597821f264fc867c69"
+      "hash": "0e6e39ca3ff7f33f8a9fe3468b08fb85da05c4c5cbb4053412672a4cd865ce98",
+      "tokens_in": 984,
+      "tokens_out": 284
+    },
+    "impl:calc.run_expression": {
+      "hash": "94f1f1df0ae44912f33a158bf3da8708ac5c811b38a509b36a4ccc9c568875aa",
+      "tokens_in": 1073,
+      "tokens_out": 161
     },
     "plan:calc": {
       "hash": "b9213b52f69492ae9100a7c7de1c1a15001d8c7fbb540ed2bd66c90703adbab4",
-      "tokens_in": 6757,
-      "tokens_out": 1987
+      "tokens_in": 5093,
+      "tokens_out": 2144
     }
   }
 }

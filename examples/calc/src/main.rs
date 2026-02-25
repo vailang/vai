@@ -6,39 +6,35 @@ use std::vec::IntoIter;
 fn main() {
     println!("Welcome to the Calculator REPL!");
     print_help();
-
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let mut input = String::new();
-
+    
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    
     loop {
         print!("> ");
         stdout.flush().unwrap();
-
-        input.clear();
-        stdin.read_line(&mut input).unwrap();
-
-        let trimmed = input.trim();
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let lowercased = trimmed.to_lowercase();
-
-        if lowercased == "quit" || lowercased == "exit" {
-            println!("Goodbye!");
-            break;
-        }
-
-        if lowercased == "help" {
-            print_help();
-            continue;
-        }
-
-        match run_expression(trimmed) {
-            Ok(result) => println!("{} = {}", trimmed, result),
-            Err(e) => println!("{}", e),
+        
+        let mut line = String::new();
+        match stdin.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                
+                match trimmed {
+                    "help" => print_help(),
+                    "quit" | "exit" => break,
+                    _ => {
+                        match run_expression(trimmed) {
+                            Ok(result) => println!("{}", result),
+                            Err(err) => println!("{}", err),
+                        }
+                    }
+                }
+            }
+            Err(_) => break,
         }
     }
 }
@@ -81,13 +77,22 @@ fn calculate(a: f64, op: char, b: f64) -> Result<f64, CalcError> {
 }
 
 fn print_help() {
-    println!("Usage: <expression>");
-    println!("Example: 1 + 2 * (3 - 4) / 5");
-    println!("Supported operators: +, -, *, /");
-    println!("Supports parentheses and operator precedence.");
-    println!("Special commands:");
-    println!("  help       - Show this message");
-    println!("  quit/exit  - End the session");
+    println!("Calculator Help");
+    println!("===============");
+    println!();
+    println!("Supported Operators:");
+    println!("  +  Addition");
+    println!("  -  Subtraction");
+    println!("  *  Multiplication");
+    println!("  /  Division");
+    println!();
+    println!("Parentheses: Supported for grouping expressions");
+    println!();
+    println!("Example expression: 1 + 2 * (3 - 4) / 5");
+    println!();
+    println!("REPL Commands:");
+    println!("  help       Show this help message");
+    println!("  quit/exit  Exit the calculator");
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -316,20 +321,21 @@ impl Parser {
 fn eval(expr: &Expr) -> Result<f64, CalcError> {
     match expr {
         Expr::Number(n) => Ok(*n),
-        Expr::UnaryMinus(inner) => Ok(-eval(inner)?),
+        Expr::UnaryMinus(child) => {
+            let result = eval(child)?;
+            Ok(-result)
+        }
         Expr::BinaryOp { left, op, right } => {
-            let a = eval(left)?;
-            let b = eval(right)?;
-            calculate(a, *op, b)
+            let left_val = eval(left)?;
+            let right_val = eval(right)?;
+            calculate(left_val, *op, right_val)
         }
     }
 }
 
 /// Lex → parse → evaluate a raw input string, returning the numeric result.
 fn run_expression(input: &str) -> Result<f64, CalcError> {
-    let mut lexer = Lexer::new(input);
-    let tokens = lexer.tokenize()?;
-    let mut parser = Parser::new(tokens);
-    let expr = parser.parse()?;
+    let tokens = Lexer::new(input).tokenize()?;
+    let expr = Parser::new(tokens).parse()?;
     eval(&expr)
 }
