@@ -45,6 +45,8 @@ func (s *ToolServer) Execute(name string, rawInput string) string {
 		return s.updateSpec(rawInput)
 	case "create_plans":
 		return s.createPlans(rawInput)
+	case "approve_spec":
+		return s.approveSpec(rawInput)
 	default:
 		return fmt.Sprintf("error: unknown tool %q", name)
 	}
@@ -118,6 +120,20 @@ func ToolDefinitions() []provider.ToolDefinition {
 					},
 				},
 				"required": []string{"plans"},
+			}),
+		},
+		{
+			Name:        "approve_spec",
+			Description: "Approve a spec as-is when it is already clear and well-written. No changes needed.",
+			InputSchema: mustJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type":        "string",
+						"description": "The plan name to approve",
+					},
+				},
+				"required": []string{"name"},
 			}),
 		},
 	}
@@ -506,6 +522,26 @@ func findSpecBlock(planBody string) (int, int) {
 		}
 		return -1, -1
 	}
+}
+
+func (s *ToolServer) approveSpec(rawInput string) string {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
+		return fmt.Sprintf("error: invalid input: %v", err)
+	}
+
+	prog, err := s.compileProject()
+	if err != nil {
+		return fmt.Sprintf("error: %v", err)
+	}
+
+	spec := prog.GetPlanSpec(input.Name)
+	if spec == "" {
+		return fmt.Sprintf("error: plan %q not found or has no spec", input.Name)
+	}
+	return fmt.Sprintf("approved: plan %q spec is clear and ready for the skeleton step", input.Name)
 }
 
 func mustJSON(v any) json.RawMessage {

@@ -14,12 +14,19 @@ const maxTurns = 25
 
 // Prompter orchestrates the LLM-driven plan creation workflow.
 type Prompter struct {
-	cfg      *config.Config
-	baseDir  string
-	provider provider.Provider
-	server   *ToolServer
-	tools    []provider.ToolDefinition
-	events   chan Event
+	cfg          *config.Config
+	baseDir      string
+	provider     provider.Provider
+	server       *ToolServer
+	tools        []provider.ToolDefinition
+	events       chan Event
+	systemPrompt string // override for buildSystemPrompt; empty = use default
+}
+
+// SetSystemPrompt overrides the default system prompt.
+// Must be called before Run.
+func (p *Prompter) SetSystemPrompt(prompt string) {
+	p.systemPrompt = prompt
 }
 
 // SetEvents sets the event channel for progress reporting.
@@ -165,8 +172,12 @@ func (p *Prompter) Run(ctx context.Context, userPrompt string) (*Result, error) 
 }
 
 // buildSystemPrompt creates the system prompt for the prompter LLM.
-// It tries to load from the standard library first, falls back to a built-in.
+// If SetSystemPrompt was called, uses that override.
+// Otherwise tries to load from the standard library, falls back to a built-in.
 func (p *Prompter) buildSystemPrompt() (string, error) {
+	if p.systemPrompt != "" {
+		return p.systemPrompt, nil
+	}
 	// Try to load via compiler's standard library.
 	comp := compiler.New()
 	comp.SetBaseDir(p.baseDir)

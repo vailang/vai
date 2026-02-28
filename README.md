@@ -171,7 +171,7 @@ plan todo {
 
 **`vai gen skeleton`** — generates the skeleton: writes stubs and assigns implementation tasks to the target file. Useful to verify the structure before generating code.
 
-**`vai gen plan`** — reshapes the spec for the skeleton. Useful to refine the plan before generating stubs.
+**`vai gen plan`** — reviews and reshapes specs via LLM before the skeleton step. The model reads each spec and either approves it as-is or rewrites it for clarity. Useful to refine the plan before generating stubs.
 
 **`vai gen code`** — runs only the executor. Requires the skeleton to be already saved. Useful to regenerate implementations without re-running the architect.
 

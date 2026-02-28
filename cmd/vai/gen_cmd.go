@@ -1,14 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/spf13/cobra"
 	"github.com/vailang/vai/internal/compiler"
 	"github.com/vailang/vai/internal/config"
 	"github.com/vailang/vai/internal/locker"
+	"github.com/vailang/vai/internal/prompter"
 	"github.com/vailang/vai/internal/runner"
 	"github.com/vailang/vai/internal/ui"
 )
@@ -148,19 +151,134 @@ func genSkeletonCommand() *cobra.Command {
 }
 
 func genPlanCommand() *cobra.Command {
-	return &cobra.Command{
+	var (
+		yesFlag     bool
+		verboseFlag bool
+	)
+
+	cmd := &cobra.Command{
 		Use:   "plan",
-		Short: "Run architect + diff + save + flush (everything before executor)",
+		Short: "Review and reshape plan specs via LLM before the skeleton step",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			r, _, err := setupGenRunner()
+			// Find project root.
+			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			events, errc := r.RunPlan(cmd.Context())
-			return consumeEvents(events, errc)
+			cfgPath, err := config.FindConfig(cwd)
+			if err != nil {
+				return fmt.Errorf("no vai.toml found (run 'vai init <name>' to create one)")
+			}
+			cfg, err := config.LoadConfig(cfgPath)
+			if err != nil {
+				return err
+			}
+			baseDir := filepath.Dir(cfgPath)
+
+			if cfg.Planner.Provider == "" && cfg.Planner.BaseURL == "" {
+				return fmt.Errorf("no [planner] configured in vai.toml")
+			}
+
+			// Load the plan reviewer system prompt from std library.
+			comp := compiler.New()
+			comp.SetBaseDir(baseDir)
+			var systemPrompt string
+			prog, errs := comp.ParseSources(map[string]string{})
+			if len(errs) == 0 && prog.HasPrompt("std.vai_plan_reviewer") {
+				result, err := prog.Eval("inject std.vai_plan_reviewer")
+				if err == nil && result != "" {
+					systemPrompt = result
+				}
+			}
+
+			// Create prompter with reviewer prompt.
+			p, err := prompter.New(cfg, baseDir)
+			if err != nil {
+				return err
+			}
+			if systemPrompt != "" {
+				p.SetSystemPrompt(systemPrompt)
+			}
+
+			var (
+				wg           sync.WaitGroup
+				promptEvents chan prompter.Event
+			)
+			if !jsonFlag {
+				promptEvents = make(chan prompter.Event, 32)
+				p.SetEvents(promptEvents)
+				display := prompter.NewDisplay(verboseFlag)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					display.Consume(promptEvents)
+				}()
+			}
+
+			// Build user prompt based on --name flag.
+			userPrompt := "Review and reshape all plan specs. Approve specs that are already clear, update those that need improvement."
+			if nameFlag != "" {
+				userPrompt = fmt.Sprintf("Review and reshape the spec for plan %q. Approve it if already clear, update it if it needs improvement.", nameFlag)
+			}
+
+			result, runErr := p.Run(cmd.Context(), userPrompt)
+			if promptEvents != nil {
+				close(promptEvents)
+				wg.Wait()
+			}
+			if runErr != nil {
+				return runErr
+			}
+
+			if len(result.Changes) == 0 {
+				if jsonFlag {
+					enc := json.NewEncoder(os.Stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(map[string]any{
+						"changes": []any{},
+						"summary": result.Summary,
+					})
+				}
+				fmt.Println(result.Summary)
+				return nil
+			}
+
+			// Display changes.
+			if jsonFlag {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(map[string]any{
+					"changes":    result.Changes,
+					"summary":    result.Summary,
+					"tokens_in":  result.TokensIn,
+					"tokens_out": result.TokensOut,
+				})
+			}
+
+			prompter.DisplayChanges(result.Changes, os.Stdout)
+
+			// Confirm unless -y.
+			if !yesFlag {
+				if !prompter.Confirm(os.Stdin, os.Stdout) {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
+
+			// Flush changes to disk.
+			if err := result.Flush(baseDir); err != nil {
+				return fmt.Errorf("writing changes: %w", err)
+			}
+
+			fmt.Println("Specs updated.")
+			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Accept all changes without confirmation")
+	cmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "Show detailed tool calls, results, and LLM responses")
+	return cmd
 }
 
 func genCodeCommand() *cobra.Command {
