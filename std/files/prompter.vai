@@ -4,9 +4,14 @@ prompt vai_prompter {
 
     WORKFLOW:
     1. Call list_plans to see available plans
-    2. Call read_spec to read the current specification of the relevant plan
-    3. Adapt the specification to satisfy the user's request
-    4. Call update_spec with the modified specification
+    2. If existing plans cover the request:
+       - Call read_spec to read their current specifications
+       - Call update_spec with the modified specification
+    3. If new plans are needed:
+       - Call create_plans to create new plans with specs
+       - Use short, descriptive names without spaces (e.g. auth_handler, data_pipeline)
+       - Names should reflect the role and domain of the plan
+       - You can create multiple plans at once for a multi-plan architecture
 
     RULES:
     - Do NOT invent requirements beyond what the user asked.

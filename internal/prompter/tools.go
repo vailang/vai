@@ -43,6 +43,8 @@ func (s *ToolServer) Execute(name string, rawInput string) string {
 		return s.readSpec(rawInput)
 	case "update_spec":
 		return s.updateSpec(rawInput)
+	case "create_plans":
+		return s.createPlans(rawInput)
 	default:
 		return fmt.Sprintf("error: unknown tool %q", name)
 	}
@@ -89,6 +91,33 @@ func ToolDefinitions() []provider.ToolDefinition {
 					},
 				},
 				"required": []string{"name", "spec"},
+			}),
+		},
+		{
+			Name:        "create_plans",
+			Description: "Create one or more new plans. Each plan gets its own .vai file. Use short, descriptive names joined without spaces (e.g. auth_handler, data_pipeline). Names should reflect the plan's role and domain.",
+			InputSchema: mustJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"plans": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"name": map[string]any{
+									"type":        "string",
+									"description": "Plan name — short, descriptive, no spaces (e.g. auth_handler, data_pipeline)",
+								},
+								"spec": map[string]any{
+									"type":        "string",
+									"description": "The specification text for this plan",
+								},
+							},
+							"required": []string{"name", "spec"},
+						},
+					},
+				},
+				"required": []string{"plans"},
 			}),
 		},
 	}
@@ -210,6 +239,78 @@ func (s *ToolServer) updateSpec(rawInput string) string {
 	})
 
 	return "ok"
+}
+
+func (s *ToolServer) createPlans(rawInput string) string {
+	var input struct {
+		Plans []struct {
+			Name string `json:"name"`
+			Spec string `json:"spec"`
+		} `json:"plans"`
+	}
+	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
+		return fmt.Sprintf("error: invalid input: %v", err)
+	}
+	if len(input.Plans) == 0 {
+		return "error: no plans provided"
+	}
+
+	promptsDir := filepath.Join(s.baseDir, s.cfg.Lib.Prompts)
+
+	type resultEntry struct {
+		Name string `json:"name"`
+		File string `json:"file"`
+	}
+	var created []resultEntry
+
+	for _, p := range input.Plans {
+		if p.Name == "" {
+			return "error: plan name cannot be empty"
+		}
+		if strings.Contains(p.Name, " ") {
+			return fmt.Sprintf("error: plan name %q must not contain spaces", p.Name)
+		}
+
+		fileName := p.Name + ".vai"
+		absPath := filepath.Join(promptsDir, fileName)
+		relPath, _ := filepath.Rel(s.baseDir, absPath)
+
+		// Check if file already exists (in-memory or on disk).
+		if _, ok := s.written[absPath]; ok {
+			return fmt.Sprintf("error: file %q already exists (created this session)", relPath)
+		}
+		if _, err := os.Stat(absPath); err == nil {
+			return fmt.Sprintf("error: file %q already exists on disk", relPath)
+		}
+
+		// Build .vai content.
+		var b strings.Builder
+		b.WriteString("plan ")
+		b.WriteString(p.Name)
+		b.WriteString(" {\n")
+		b.WriteString("    spec {\n")
+		for _, line := range strings.Split(strings.TrimSpace(p.Spec), "\n") {
+			b.WriteString("        ")
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+		b.WriteString("    }\n")
+		b.WriteString("}\n")
+
+		content := b.String()
+		s.written[absPath] = content
+		s.changes = append(s.changes, Change{
+			Path:    relPath,
+			Type:    ChangeCreated,
+			Content: content,
+			IsVai:   true,
+		})
+
+		created = append(created, resultEntry{Name: p.Name, File: relPath})
+	}
+
+	data, _ := json.MarshalIndent(created, "", "  ")
+	return string(data)
 }
 
 // --- Helpers ---
