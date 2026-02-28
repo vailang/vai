@@ -2,36 +2,49 @@ plan calc {
     target "src/main.rs"
     spec {
         Create an interactive calculator that can perform basic arithmetic operations
-        (addition, subtraction, multiplication, division) and handle user input.
-        The calculator should be able to display results and allow users to perform multiple
-        calculations in a session.
-        support skip space, and multiple op in single expression with parenthesis.
-        example: 1 + 2 * (3 - 4) / 5
-        create an lexer to tokenize the input, and a parser to build an abstract syntax tree (AST) for evaluation.
+                (addition, subtraction, multiplication, division, exponentiation) and handle user input.
+                The calculator should be able to display results and allow users to perform multiple
+                calculations in a session.
+                support skip space, and multiple op in single expression with parenthesis.
+                example: 1 + 2 * (3 - 4) / 5
+                support pow (exponentiation) operation using the ^ operator (e.g. 2 ^ 10 = 1024).
+                pow should have higher precedence than multiplication and division.
+                create an lexer to tokenize the input, and a parser to build an abstract syntax tree (AST) for evaluation.
     }
 
     impl fmtDisplayCalcError {
         [target "src/main.rs"]
-        Format each CalcError variant into a human-readable message.
-                DivisionByZero: 'Division by zero'.
-                InvalidOperator: include the offending char.
-                ParseError: include the inner string.
-                UnexpectedToken: include the token's Debug representation via {:?}.
-                UnexpectedEof: 'Unexpected end of input'.
+        Implement Display for CalcError by matching each variant to a human-readable message.
+        DivisionByZero → 'Division by zero', InvalidOperator(c) → include c, ParseError(s) → include s, UnexpectedToken(t) → use {:?} on t, UnexpectedEof → 'Unexpected end of input'.
         [use CalcError]
         [use Token]
+    }
+
+    impl calculate {
+        [target "src/main.rs"]
+        Dispatch on op char to perform +, -, *, /, ^ on a and b.
+        Return DivisionByZero when op is '/' and b is 0.0.
+        For '^' use a.powf(b).
+        Return InvalidOperator for any unrecognized char.
+        [use CalcError]
+    }
+
+    impl print_help {
+        [target "src/main.rs"]
+        Print a formatted help message to stdout.
+        List supported operators (+, -, *, /, ^ for exponentiation), parentheses support, operator precedence note, and an example expression like '1 + 2 * (3 - 4) / 5' and '2 ^ 10 = 1024'.
+        List REPL commands: 'help', 'quit'/'exit'.
     }
 
     impl implLexer {
         [target "src/main.rs"]
         Implement all Lexer methods.
-                
-                new: store input.chars().peekable() in the struct.
-                peek: copied() on self.chars.peek() to return Option<char>.
-                consume: call self.chars.next().unwrap().
-                skip_whitespace: loop while peek() is Some whitespace, consuming each.
-                read_number: build a String starting with `first`, appending while peek() is digit or '.', then parse::<f64>() returning ParseError on failure.
-                tokenize: loop calling skip_whitespace then peek; map operator chars to Token variants, digits/dots to read_number; return InvalidOperator for unknowns; stop at None.
+        new: store input.chars().peekable().
+        peek: return self.chars.peek().copied().
+        consume: return self.chars.next().unwrap().
+        skip_whitespace: loop while peek() is Some ASCII whitespace, consuming each.
+        read_number: build a String from `first`, appending while peek() is digit or '.', then parse::<f64>() returning ParseError on failure.
+        tokenize: loop calling skip_whitespace then peek; map '+' → Plus, '-' → Minus, '*' → Star, '/' → Slash, '^' → Caret, '(' → LParen, ')' → RParen, digit/'.' → read_number; return InvalidOperator for unknown chars; stop on None.
         [use Lexer]
         [use Token]
         [use CalcError]
@@ -39,41 +52,26 @@ plan calc {
 
     impl implParser {
         [target "src/main.rs"]
-        Implement all Parser methods as a recursive-descent parser.
-                
-                new: call tokens.into_iter().peekable().
-                parse: call parse_expr(); if any token remains return UnexpectedToken with that token.
-                parse_expr: call parse_term() then loop consuming Plus/Minus tokens, folding into BinaryOp with '+'/'-' char.
-                parse_term: call parse_factor() then loop consuming Star/Slash tokens, folding into BinaryOp with '*'/'/' char.
-                parse_factor: on Minus consume and wrap recursive parse_factor in UnaryMinus. On LParen call parse_expr then expect/consume RParen (UnexpectedToken if wrong). On Number consume and return Expr::Number. On None return UnexpectedEof. Otherwise return UnexpectedToken.
+        Implement all Parser methods as a recursive-descent parser with correct precedence.
+        new: call tokens.into_iter().peekable().
+        parse: call parse_expr(); if any token remains return UnexpectedToken with that token.
+        parse_expr: call parse_term() then loop consuming Plus/Minus tokens, folding into BinaryOp('+'/'-').
+        parse_term: call parse_power() then loop consuming Star/Slash tokens, folding into BinaryOp('*'/'/').
+        parse_power: call parse_factor(); if next token is Caret, consume it and recursively call parse_power() (right-associative), folding into BinaryOp('^').
+        parse_factor: on Minus consume and wrap recursive parse_factor() in UnaryMinus. On LParen call parse_expr then expect/consume RParen (UnexpectedToken if wrong token, UnexpectedEof if None). On Number consume and return Expr::Number. On None return UnexpectedEof. Otherwise return UnexpectedToken.
         [use Parser]
         [use Token]
         [use Expr]
         [use CalcError]
     }
 
-    impl calculate {
-        [target "src/main.rs"]
-        Dispatch on op char to perform +, -, *, / on a and b.
-                Return DivisionByZero when op is '/' and b is 0.0.
-                Return InvalidOperator for any other char.
-        [use CalcError]
-    }
-
-    impl print_help {
-        [target "src/main.rs"]
-        Print a formatted help message to stdout.
-                List supported operators (+, -, *, /), parentheses support, and an example expression like '1 + 2 * (3 - 4) / 5'.
-                List REPL commands: 'help', 'quit'/'exit'.
-    }
-
     impl eval {
         [target "src/main.rs"]
         Recursively evaluate an Expr node.
-                Number: return the inner f64.
-                UnaryMinus: negate the recursive eval of the child.
-                BinaryOp: eval left, eval right, then call calculate(left, op, right).
-                Propagate any CalcError with ?.
+        Number: return the inner f64.
+        UnaryMinus: negate the recursive eval of the child.
+        BinaryOp: eval left, eval right, then call calculate(left, op, right).
+        Propagate any CalcError with ?.
         [use Expr]
         [use calculate]
         [use CalcError]
@@ -82,8 +80,8 @@ plan calc {
     impl run_expression {
         [target "src/main.rs"]
         Orchestrate the full lex → parse → eval pipeline.
-                Create Lexer::new(input), call tokenize()?, pass tokens to Parser::new, call parse()?, then eval() and return the result.
-                Propagate any CalcError at each stage.
+        Create Lexer::new(input), call tokenize()?, pass tokens to Parser::new, call parse()?, then eval() and return the result.
+        Propagate any CalcError at each stage.
         [use Lexer]
         [use Parser]
         [use eval]
@@ -93,15 +91,16 @@ plan calc {
     impl main {
         [target "src/main.rs"]
         Run an interactive REPL loop.
-                Print a welcome banner then call print_help().
-                Loop: print '> ' prompt, flush stdout, read a line from stdin (break on EOF).
-                Trim the input; skip empty lines. Dispatch 'help' to print_help(), 'quit'/'exit' to break.
-                Otherwise call run_expression and print the numeric result or the CalcError via Display.
+        Print a welcome banner then call print_help().
+        Loop: print '> ' prompt, flush stdout, read a line from stdin (break on EOF or error).
+        Trim the input; skip empty lines. Dispatch 'help' to print_help(), 'quit'/'exit' to break.
+        Otherwise call run_expression and print the numeric result or the CalcError via Display.
         [use run_expression]
         [use print_help]
         [use CalcError]
     }
 }
+
 
 
 

@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::iter::Peekable;
 use std::vec::IntoIter;
 
+
 fn main() {
     println!("Welcome to the Calculator REPL!");
     print_help();
@@ -16,25 +17,25 @@ fn main() {
         
         let mut line = String::new();
         match stdin.read_line(&mut line) {
-            Ok(0) => break,
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                
-                match trimmed {
-                    "help" => print_help(),
-                    "quit" | "exit" => break,
-                    _ => {
-                        match run_expression(trimmed) {
-                            Ok(result) => println!("{}", result),
-                            Err(err) => println!("{}", err),
-                        }
-                    }
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        
+        let input = line.trim();
+        
+        if input.is_empty() {
+            continue;
+        }
+        
+        match input {
+            "help" => print_help(),
+            "quit" | "exit" => break,
+            _ => {
+                match run_expression(input) {
+                    Ok(result) => println!("{}", result),
+                    Err(err) => println!("{}", err),
                 }
             }
-            Err(_) => break,
         }
     }
 }
@@ -72,25 +73,30 @@ fn calculate(a: f64, op: char, b: f64) -> Result<f64, CalcError> {
                 Ok(a / b)
             }
         }
+        '^' => Ok(a.powf(b)),
         _ => Err(CalcError::InvalidOperator(op)),
     }
 }
 
 fn print_help() {
-    println!("Calculator Help");
-    println!("===============");
+    println!("=== Calculator Help ===");
     println!();
-    println!("Supported Operators:");
+    println!("Supported operators:");
     println!("  +  Addition");
     println!("  -  Subtraction");
     println!("  *  Multiplication");
     println!("  /  Division");
+    println!("  ^  Exponentiation");
     println!();
-    println!("Parentheses: Supported for grouping expressions");
+    println!("Features:");
+    println!("  - Parentheses are supported for grouping expressions");
+    println!("  - Standard operator precedence applies (^ > * / > + -)");
     println!();
-    println!("Example expression: 1 + 2 * (3 - 4) / 5");
+    println!("Examples:");
+    println!("  1 + 2 * (3 - 4) / 5");
+    println!("  2 ^ 10 = 1024");
     println!();
-    println!("REPL Commands:");
+    println!("REPL commands:");
     println!("  help       Show this help message");
     println!("  quit/exit  Exit the calculator");
 }
@@ -102,6 +108,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Caret,
     LParen,
     RParen,
 }
@@ -166,6 +173,10 @@ impl<'a> Lexer<'a> {
                         '/' => {
                             self.consume();
                             tokens.push(Token::Slash);
+                        }
+                        '^' => {
+                            self.consume();
+                            tokens.push(Token::Caret);
                         }
                         '(' => {
                             self.consume();
@@ -274,7 +285,7 @@ impl Parser {
 
     /// Parse multiplication / division (higher precedence).
     fn parse_term(&mut self) -> Result<Expr, CalcError> {
-        let mut left = self.parse_factor()?;
+        let mut left = self.parse_power()?;
 
         while let Some(token) = self.tokens.peek() {
             let op = match token {
@@ -284,10 +295,27 @@ impl Parser {
             };
 
             self.tokens.next();
-            let right = self.parse_factor()?;
+            let right = self.parse_power()?;
             left = Expr::BinaryOp {
                 left: Box::new(left),
                 op,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+
+    /// Parse exponentiation (higher precedence than multiplication/division).
+    fn parse_power(&mut self) -> Result<Expr, CalcError> {
+        let mut left = self.parse_factor()?;
+
+        if let Some(Token::Caret) = self.tokens.peek() {
+            self.tokens.next();
+            let right = self.parse_power()?;
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op: '^',
                 right: Box::new(right),
             };
         }
@@ -321,9 +349,9 @@ impl Parser {
 fn eval(expr: &Expr) -> Result<f64, CalcError> {
     match expr {
         Expr::Number(n) => Ok(*n),
-        Expr::UnaryMinus(child) => {
-            let result = eval(child)?;
-            Ok(-result)
+        Expr::UnaryMinus(inner) => {
+            let val = eval(inner)?;
+            Ok(-val)
         }
         Expr::BinaryOp { left, op, right } => {
             let left_val = eval(left)?;
@@ -335,7 +363,9 @@ fn eval(expr: &Expr) -> Result<f64, CalcError> {
 
 /// Lex → parse → evaluate a raw input string, returning the numeric result.
 fn run_expression(input: &str) -> Result<f64, CalcError> {
-    let tokens = Lexer::new(input).tokenize()?;
-    let expr = Parser::new(tokens).parse()?;
+    let mut lexer = Lexer::new(input);
+    let tokens = lexer.tokenize()?;
+    let mut parser = Parser::new(tokens);
+    let expr = parser.parse()?;
     eval(&expr)
 }

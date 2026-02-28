@@ -2,9 +2,9 @@
   "version": 1,
   "entries": {
     "impl:calc.calculate": {
-      "hash": "0e65b2205c3f33f25f3892580774cfe3f5bb0b74b7bb8d502f3d9fbabdf9ff04",
-      "tokens_in": 1012,
-      "tokens_out": 240
+      "hash": "3bbe7ba4ad1410afb61ab2d11522d88111d689fdebcf0a015fb80ec362398914",
+      "tokens_in": 1030,
+      "tokens_out": 224
     },
     "impl:calc.eval": {
       "hash": "2d78bf1438442c6fdf86f93f19ca79852eb0580f2f135963c8f0176513035503",
@@ -12,29 +12,29 @@
       "tokens_out": 208
     },
     "impl:calc.fmtDisplayCalcError": {
-      "hash": "ff605388c8a45dcdc38564321ebfb0f2534a47032f0863a4afbb3a2566bbf0af",
-      "tokens_in": 1016,
-      "tokens_out": 244
+      "hash": "6125aa32259dd57188a73385aace56c491971d74c356cf4289e1130ef8fe84c3",
+      "tokens_in": 1018,
+      "tokens_out": 258
     },
     "impl:calc.implLexer": {
-      "hash": "d8b80fd7712bd44c4e27e22b74d056f7caff67cbc3ed44b0d474857deb0d80a2",
-      "tokens_in": 1102,
-      "tokens_out": 720
+      "hash": "64fb52adf201b628264de7b54f7b3a02cc86dea287bf188346397ce1e359ba26",
+      "tokens_in": 1128,
+      "tokens_out": 755
     },
     "impl:calc.implParser": {
-      "hash": "032fb51e7acccf75b42fd9f0ef9498dec65d4f686496eb7272ce15ecb0ebede4",
-      "tokens_in": 1141,
-      "tokens_out": 867
+      "hash": "e4af96b9733570354e37db70ab073cfcdb06e8e415fe72dbd43e134e10d8c08f",
+      "tokens_in": 1195,
+      "tokens_out": 982
     },
     "impl:calc.main": {
-      "hash": "fbce22cb4b151724595f0068d88ce68dc2f01e95071320718893d3425cc21297",
-      "tokens_in": 1078,
-      "tokens_out": 353
+      "hash": "d66dda744d6d29a37d60a8251d11b04115168c37aa12ab25a9976f6d94eaf4c3",
+      "tokens_in": 1080,
+      "tokens_out": 306
     },
     "impl:calc.print_help": {
-      "hash": "0e6e39ca3ff7f33f8a9fe3468b08fb85da05c4c5cbb4053412672a4cd865ce98",
-      "tokens_in": 984,
-      "tokens_out": 284
+      "hash": "f286aed8cda0a094de9cb13f8a64f4bedff5853e0c6aa5018c8c68bdf70a058f",
+      "tokens_in": 1008,
+      "tokens_out": 308
     },
     "impl:calc.run_expression": {
       "hash": "94f1f1df0ae44912f33a158bf3da8708ac5c811b38a509b36a4ccc9c568875aa",
@@ -42,9 +42,9 @@
       "tokens_out": 161
     },
     "plan:calc": {
-      "hash": "b9213b52f69492ae9100a7c7de1c1a15001d8c7fbb540ed2bd66c90703adbab4",
-      "tokens_in": 5093,
-      "tokens_out": 2144
+      "hash": "3e3bd4eb89ec8f344d211d0fe8b2bdf9de3d1a09f7fd6005007faba5fc5580bb",
+      "tokens_in": 5465,
+      "tokens_out": 2624
     }
   }
 }
