@@ -19,6 +19,7 @@ func main() {
 	rootCommand.AddCommand(buildCommand())
 	rootCommand.AddCommand(genCommand())
 	rootCommand.AddCommand(initCommand())
+	rootCommand.AddCommand(promptCommand())
 	rootCommand.AddCommand(treeCommand())
 	if err := rootCommand.Execute(); err != nil {
 		os.Exit(1)

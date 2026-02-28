@@ -21,8 +21,10 @@ type Request struct {
 
 // Message represents a single message in the conversation.
 type Message struct {
-	Role    string // "user" or "assistant"
-	Content string
+	Role       string     // "user", "assistant", or "tool"
+	Content    string
+	ToolCalls  []ToolCall // set when Role="assistant" and LLM made tool calls
+	ToolCallID string     // set when Role="tool" (result of a tool call)
 }
 
 // ToolDefinition describes a tool the LLM can call.

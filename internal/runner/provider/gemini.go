@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/vailang/vai/internal/config"
@@ -59,8 +60,14 @@ type geminiContent struct {
 }
 
 type geminiPart struct {
-	Text         string          `json:"text,omitempty"`
-	FunctionCall *geminiFuncCall `json:"functionCall,omitempty"`
+	Text             string              `json:"text,omitempty"`
+	FunctionCall     *geminiFuncCall     `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFuncResponse `json:"functionResponse,omitempty"`
+}
+
+type geminiFuncResponse struct {
+	Name     string          `json:"name"`
+	Response json.RawMessage `json:"response"`
 }
 
 type geminiFuncCall struct {
@@ -100,14 +107,45 @@ type geminiCandidate struct {
 func (p *geminiProvider) Call(ctx context.Context, req Request) (*Response, error) {
 	var contents []geminiContent
 	for _, m := range req.Messages {
-		role := m.Role
-		if role == "assistant" {
-			role = "model"
+		switch {
+		case len(m.ToolCalls) > 0:
+			// Assistant message with tool calls → model message with functionCall parts.
+			var parts []geminiPart
+			if m.Content != "" {
+				parts = append(parts, geminiPart{Text: m.Content})
+			}
+			for _, tc := range m.ToolCalls {
+				parts = append(parts, geminiPart{
+					FunctionCall: &geminiFuncCall{
+						Name: tc.Name,
+						Args: json.RawMessage(tc.Input),
+					},
+				})
+			}
+			contents = append(contents, geminiContent{Role: "model", Parts: parts})
+
+		case m.Role == "tool":
+			// Tool result → user message with functionResponse part.
+			contents = append(contents, geminiContent{
+				Role: "user",
+				Parts: []geminiPart{{
+					FunctionResponse: &geminiFuncResponse{
+						Name:     m.ToolCallID,
+						Response: json.RawMessage(`{"result":` + strconv.Quote(m.Content) + `}`),
+					},
+				}},
+			})
+
+		default:
+			role := m.Role
+			if role == "assistant" {
+				role = "model"
+			}
+			contents = append(contents, geminiContent{
+				Role:  role,
+				Parts: []geminiPart{{Text: m.Content}},
+			})
 		}
-		contents = append(contents, geminiContent{
-			Role:  role,
-			Parts: []geminiPart{{Text: m.Content}},
-		})
 	}
 
 	var sysInstr *geminiContent

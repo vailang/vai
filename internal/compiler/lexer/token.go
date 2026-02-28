@@ -45,6 +45,7 @@ const (
 	IMPL       // impl (implementation block inside plan)
 	TARGET     // target (output file path inside plan)
 	REFERENCE  // reference (symbol source for [use] resolution, not emitted in status)
+	INSPECT    // inspect (raw plan content extraction, eval-only)
 	keyword_end
 )
 
@@ -58,6 +59,7 @@ var keywords = map[string]Token{
 	"impl":       IMPL,
 	"target":     TARGET,
 	"reference":  REFERENCE,
+	"inspect":    INSPECT,
 }
 
 // tokens maps Token types to their string representation for debugging.
@@ -91,6 +93,7 @@ var tokens = [...]string{
 	IMPL:       "IMPL",
 	TARGET:     "TARGET",
 	REFERENCE:  "REFERENCE",
+	INSPECT:    "INSPECT",
 }
 
 // IsBodyKeyword returns true if the token is a keyword that expects a body block

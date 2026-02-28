@@ -59,8 +59,8 @@ type anthropicRequest struct {
 }
 
 type anthropicMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string or []anthropicContent
 }
 
 type anthropicTool struct {
@@ -81,18 +81,63 @@ type anthropicResponse struct {
 }
 
 type anthropicContent struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text,omitempty"`
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`  // for tool_result
+	ResultContent string      `json:"content,omitempty"`      // for tool_result text
+}
+
+// buildAnthropicMessages converts provider messages to Anthropic API format.
+// Handles multi-turn tool use: assistant messages with tool_use content blocks
+// and tool result messages batched into user messages with tool_result blocks.
+func buildAnthropicMessages(messages []Message) []anthropicMsg {
+	var msgs []anthropicMsg
+	for i := 0; i < len(messages); i++ {
+		m := messages[i]
+		switch {
+		case len(m.ToolCalls) > 0:
+			// Assistant message with tool calls → content blocks.
+			var blocks []anthropicContent
+			if m.Content != "" {
+				blocks = append(blocks, anthropicContent{Type: "text", Text: m.Content})
+			}
+			for _, tc := range m.ToolCalls {
+				blocks = append(blocks, anthropicContent{
+					Type:  "tool_use",
+					ID:    tc.ID,
+					Name:  tc.Name,
+					Input: json.RawMessage(tc.Input),
+				})
+			}
+			msgs = append(msgs, anthropicMsg{Role: "assistant", Content: blocks})
+
+		case m.Role == "tool":
+			// Collect consecutive tool results into a single user message.
+			var blocks []anthropicContent
+			for i < len(messages) && messages[i].Role == "tool" {
+				blocks = append(blocks, anthropicContent{
+					Type:          "tool_result",
+					ToolUseID:     messages[i].ToolCallID,
+					ResultContent: messages[i].Content,
+				})
+				i++
+			}
+			i-- // outer loop will increment
+			msgs = append(msgs, anthropicMsg{Role: "user", Content: blocks})
+
+		default:
+			// Simple text message.
+			msgs = append(msgs, anthropicMsg{Role: m.Role, Content: m.Content})
+		}
+	}
+	return msgs
 }
 
 func (p *anthropicProvider) Call(ctx context.Context, req Request) (*Response, error) {
-	msgs := make([]anthropicMsg, len(req.Messages))
-	for i, m := range req.Messages {
-		msgs[i] = anthropicMsg(m)
-	}
+	msgs := buildAnthropicMessages(req.Messages)
 
 	var tools []anthropicTool
 	for _, t := range req.Tools {

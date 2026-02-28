@@ -151,6 +151,21 @@ func (i *InjectDecl) DeclName() string             { return "_inject_" + i.Name 
 func (*InjectDecl) GetDirectives() []Directive      { return nil }
 
 // ---------------------------------------------------------------------------
+// InspectDecl
+// ---------------------------------------------------------------------------
+
+// InspectDecl represents a top-level inspect statement (raw plan content extraction, eval-only).
+// Syntax: inspect planName | inspect planName.spec | inspect planName.implName
+type InspectDecl struct {
+	Name string
+	Pos  Position
+}
+
+func (*InspectDecl) node()                        {}
+func (i *InspectDecl) DeclName() string             { return "_inspect_" + i.Name }
+func (*InspectDecl) GetDirectives() []Directive      { return nil }
+
+// ---------------------------------------------------------------------------
 // SpecDecl
 // ---------------------------------------------------------------------------
 

@@ -75,6 +75,28 @@ func (p *Parser) parseInject() *ast.InjectDecl {
 	}
 }
 
+// parseInspect parses a standalone inspect statement (eval-only).
+// Syntax: inspect name or inspect plan.spec or inspect plan.impl
+func (p *Parser) parseInspect() *ast.InspectDecl {
+	pos := tokenPos(p.current)
+	p.expect(lexer.INSPECT)
+
+	name := p.expectName()
+	fullName := name.Val
+
+	// Check for dotted name: inspect plan.spec or inspect plan.implName
+	if p.current.Type == lexer.DOT {
+		p.advance() // consume .
+		part := p.expectName()
+		fullName = fullName + "." + part.Val
+	}
+
+	return &ast.InspectDecl{
+		Name: fullName,
+		Pos:  pos,
+	}
+}
+
 // parseSpec parses a spec block (no name, free text body, only inside plan).
 // Syntax: spec { free text }
 func (p *Parser) parseSpec() *ast.SpecDecl {

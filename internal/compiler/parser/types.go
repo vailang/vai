@@ -91,7 +91,7 @@ func (p *Parser) errorf(format string, args ...any) {
 func (p *Parser) synchronize() {
 	for p.current.Type != lexer.EOF && p.current.Type != lexer.ILLEGAL {
 		switch p.current.Type {
-		case lexer.PROMPT, lexer.PLAN, lexer.CONSTRAINT, lexer.INJECT, lexer.SPEC, lexer.IMPL, lexer.TARGET, lexer.REFERENCE:
+		case lexer.PROMPT, lexer.PLAN, lexer.CONSTRAINT, lexer.INJECT, lexer.INSPECT, lexer.SPEC, lexer.IMPL, lexer.TARGET, lexer.REFERENCE:
 			return
 		}
 		p.advance()
@@ -146,6 +146,11 @@ func (p *Parser) ParseFile() (*ast.File, []Error) {
 			file.Declarations = append(file.Declarations, p.parsePrompt())
 		case lexer.INJECT:
 			decl := p.parseInject()
+			if p.evalMode {
+				file.Declarations = append(file.Declarations, decl)
+			}
+		case lexer.INSPECT:
+			decl := p.parseInspect()
 			if p.evalMode {
 				file.Declarations = append(file.Declarations, decl)
 			}

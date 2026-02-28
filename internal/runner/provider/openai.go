@@ -59,8 +59,10 @@ type openaiRequest struct {
 }
 
 type openaiMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type openaiTool struct {
@@ -111,7 +113,23 @@ func (p *openaiProvider) Call(ctx context.Context, req Request) (*Response, erro
 		msgs = append(msgs, openaiMsg{Role: "system", Content: req.System})
 	}
 	for _, m := range req.Messages {
-		msgs = append(msgs, openaiMsg(m))
+		msg := openaiMsg{Role: m.Role, Content: m.Content}
+		if len(m.ToolCalls) > 0 {
+			for _, tc := range m.ToolCalls {
+				msg.ToolCalls = append(msg.ToolCalls, openaiToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: tc.Name, Arguments: tc.Input},
+				})
+			}
+		}
+		if m.ToolCallID != "" {
+			msg.ToolCallID = m.ToolCallID
+		}
+		msgs = append(msgs, msg)
 	}
 
 	var tools []openaiTool
