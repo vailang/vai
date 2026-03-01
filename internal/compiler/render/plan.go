@@ -95,14 +95,24 @@ func Plan(
 		}
 	}
 
-	// ## Implementation Order — each impl is atomic.
+	// ## Implementation Order — lightweight rendering for the planner.
+	// No code blocks (skeleton is already in Target File Status).
+	// No type definitions section (types are already complete in the skeleton).
 	if len(plan.Impls) > 0 {
 		buf.WriteString("## Implementation Order\n")
+
+		// Resolve signatures for [use] dependency listing.
+		var sigs map[string]string
+		if target != nil {
+			file := implParentFile(plan.Impls[0], plans)
+			_, sigs, _ = resolveAllTargets(file, target, baseDir)
+		}
+
 		for _, impl := range plan.Impls {
 			if len(plan.Targets) == 0 {
 				buf.WriteString("### impl " + impl.Name + " (target not used)\n")
 			} else {
-				buf.WriteString(ImplAtomic(impl, prompts, plans, target, baseDir, plan.Targets...))
+				buf.WriteString(ImplLight(impl, prompts, sigs))
 			}
 			buf.WriteString("\n")
 		}

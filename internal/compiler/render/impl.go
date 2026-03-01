@@ -182,6 +182,38 @@ func renderRefItem(
 	return "- `" + ref.Name + "`\n"
 }
 
+// ImplLight renders an impl as a lightweight summary for the planner.
+// No code block (the skeleton is already shown in Target File Status).
+// All [use] references are rendered as signature-only (no code fences for types).
+func ImplLight(
+	impl *ast.ImplDecl,
+	prompts map[string]*ast.PromptDecl,
+	sigs map[string]string,
+) string {
+	var buf strings.Builder
+	buf.WriteString("### " + impl.Name + "\n")
+
+	textParts, refs := splitBodyTextAndRefs(impl.Body, prompts)
+
+	if len(textParts) > 0 {
+		buf.WriteString(strings.Join(textParts, "\n"))
+		buf.WriteString("\n")
+	}
+
+	if len(refs) > 0 {
+		buf.WriteString("\nDependencies:\n")
+		for _, ref := range refs {
+			if sig, ok := sigs[ref.Name]; ok {
+				buf.WriteString("- `" + sig + "`\n")
+			} else {
+				buf.WriteString("- `" + ref.Name + "`\n")
+			}
+		}
+	}
+
+	return buf.String()
+}
+
 // implParentFile creates a minimal ast.File containing the plan declarations
 // so that resolveAllTargets can find target/reference paths.
 // This is needed because render functions receive plans as maps, not as a file.
