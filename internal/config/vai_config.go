@@ -1,15 +1,19 @@
 package config
 
+import "fmt"
+
 // LibConfig holds library identity and source layout.
 type LibConfig struct {
 	Name    string `toml:"name"`
 	Prompts string `toml:"prompts"`
 }
 
-// LLMConfig defines the configuration for an LLM agent (Planner or Executor).
+// LLMConfig defines the configuration for an LLM provider.
 // Provider and Model are not required when BaseURL is set.
 // Schema selects the wire format ("openai", "anthropic", "gemini") for custom providers.
 type LLMConfig struct {
+	Name                 string `toml:"name"`     // optional human label
+	Role                 string `toml:"role"`     // "plan", "code", or "" (no default role)
 	Provider             string `toml:"provider"`
 	Schema               string `toml:"schema"`
 	Model                string `toml:"model"`
@@ -38,15 +42,49 @@ type Config struct {
 	// Lib holds library identity and source layout.
 	Lib LibConfig `toml:"lib"`
 
-	// Planner is the LLM configuration for the architect agent.
-	Planner LLMConfig `toml:"planner"`
-
-	// Executor is the LLM configuration for the code generator agent.
-	Executor LLMConfig `toml:"executor"`
+	// LLMs is the list of configured LLM providers.
+	LLMs []LLMConfig `toml:"llm"`
 
 	// Debug is the debug configuration for the target language.
 	Debug DebugConfig `toml:"debug"`
 
 	// Vars holds variables for match/case resolution.
 	Vars map[string]string `toml:"vars"`
+}
+
+// ValidateRole checks that a role string is valid ("plan", "code", or empty).
+func ValidateRole(role string) error {
+	if role != "" && role != "plan" && role != "code" {
+		return fmt.Errorf("role must be \"plan\", \"code\", or empty; got %q", role)
+	}
+	return nil
+}
+
+// PlannerConfig returns the LLM config with role "plan".
+// Returns an error if none or more than one have role "plan".
+func (c *Config) PlannerConfig() (LLMConfig, error) {
+	return c.byRole("plan")
+}
+
+// ExecutorConfig returns the LLM config with role "code".
+// Returns an error if none or more than one have role "code".
+func (c *Config) ExecutorConfig() (LLMConfig, error) {
+	return c.byRole("code")
+}
+
+func (c *Config) byRole(role string) (LLMConfig, error) {
+	var matches []LLMConfig
+	for _, l := range c.LLMs {
+		if l.Role == role {
+			matches = append(matches, l)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return LLMConfig{}, fmt.Errorf("no LLM with role %q configured in vai.toml", role)
+	case 1:
+		return matches[0], nil
+	default:
+		return LLMConfig{}, fmt.Errorf("multiple LLMs with role %q configured in vai.toml (expected exactly one)", role)
+	}
 }

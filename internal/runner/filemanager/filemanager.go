@@ -128,21 +128,6 @@ func flushEntry(path string, entry *fileEntry) error {
 	return nil
 }
 
-// Rollback restores all files to their original loaded state.
-func (fm *FileManager) Rollback() {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	for _, entry := range fm.files {
-		entry.mu.Lock()
-		cp := make([]byte, len(entry.original))
-		copy(cp, entry.original)
-		entry.current = cp
-		entry.dirty = false
-		entry.mu.Unlock()
-	}
-}
-
 // ModifyFile acquires the per-file lock, calls fn with the current content,
 // and writes the result back. This ensures atomicity for read-modify-write cycles.
 func (fm *FileManager) ModifyFile(path string, fn func(content []byte) ([]byte, error)) error {

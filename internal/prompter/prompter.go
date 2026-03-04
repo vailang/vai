@@ -15,6 +15,7 @@ const maxTurns = 25
 // Prompter orchestrates the LLM-driven plan creation workflow.
 type Prompter struct {
 	cfg          *config.Config
+	plannerCfg   config.LLMConfig
 	baseDir      string
 	provider     provider.Provider
 	server       *ToolServer
@@ -56,16 +57,21 @@ func toolCallSummary(tc provider.ToolCall) string {
 
 // New creates a Prompter for the given project.
 func New(cfg *config.Config, baseDir string) (*Prompter, error) {
-	prov, err := provider.New(cfg.Planner)
+	planCfg, err := cfg.PlannerConfig()
+	if err != nil {
+		return nil, fmt.Errorf("planner config: %w", err)
+	}
+	prov, err := provider.New(planCfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating planner provider: %w", err)
 	}
 	return &Prompter{
-		cfg:      cfg,
-		baseDir:  baseDir,
-		provider: prov,
-		server:   NewToolServer(baseDir, cfg),
-		tools:    ToolDefinitions(),
+		cfg:        cfg,
+		plannerCfg: planCfg,
+		baseDir:    baseDir,
+		provider:   prov,
+		server:     NewToolServer(baseDir, cfg),
+		tools:      ToolDefinitions(),
 	}, nil
 }
 
@@ -90,7 +96,7 @@ func (p *Prompter) Run(ctx context.Context, userPrompt string) (*Result, error) 
 			System:    system,
 			Messages:  messages,
 			Tools:     p.tools,
-			MaxTokens: p.cfg.Planner.MaxTokens,
+			MaxTokens: p.plannerCfg.MaxTokens,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("LLM call failed (turn %d): %w", turn+1, err)

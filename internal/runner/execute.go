@@ -15,6 +15,9 @@ import (
 
 // execute runs all impl tasks in parallel using the executor LLM.
 func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) error {
+	if r.executor == nil {
+		return fmt.Errorf("no LLM with role \"code\" configured in vai.toml (required for code generation)")
+	}
 	// Collect all impls that need execution.
 	type implTask struct {
 		planName   string
@@ -48,9 +51,9 @@ func (r *Runner) execute(ctx context.Context, skeletons []planSkeletonResult) er
 	}
 
 	// Get system prompt once (shared by all executors).
-	system, err := r.prog.Eval("inject std.developer")
+	system, err := r.getDeveloperPrompt()
 	if err != nil {
-		return fmt.Errorf("eval developer prompt: %w", err)
+		return err
 	}
 
 	type implResult struct {
@@ -145,8 +148,8 @@ func (r *Runner) executeImpl(ctx context.Context, system, planName, absTargetPat
 		System:    system,
 		Messages:  []provider.Message{{Role: "user", Content: user}},
 		Tools:     []provider.ToolDefinition{tools.WriteCodeTool()},
-		Model:     r.cfg.Executor.Model,
-		MaxTokens: r.cfg.Executor.MaxTokens,
+		Model:     r.executorCfg.Model,
+		MaxTokens: r.executorCfg.MaxTokens,
 	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("executor call: %w", err)

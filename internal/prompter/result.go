@@ -43,16 +43,3 @@ func (r *Result) Flush(baseDir string) error {
 	}
 	return nil
 }
-
-// Rollback undoes all changes: deletes created files, restores modified ones.
-func (r *Result) Rollback(baseDir string) {
-	for _, ch := range r.Changes {
-		absPath := filepath.Join(baseDir, ch.Path)
-		switch ch.Type {
-		case ChangeCreated:
-			_ = os.Remove(absPath)
-		case ChangeModified:
-			_ = os.WriteFile(absPath, []byte(ch.Original), 0644)
-		}
-	}
-}

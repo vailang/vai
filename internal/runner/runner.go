@@ -64,17 +64,32 @@ type RunStats struct {
 // Runner orchestrates the 5-step pipeline:
 // Plan (compiler) → Architect (LLM) → Diff (tree-sitter) → Executor (LLM) → Debug (loop).
 type Runner struct {
-	prog       compiler.Program
-	cfg        *config.Config
-	planner    provider.Provider
-	executor   provider.Provider
-	fm         *filemanager.FileManager
-	pool       *coderPool
-	baseDir    string // working directory for command execution
-	planFilter string // if set, only process plans matching this name
-	locker     RequestLocker
-	stats      RunStats
-	events     chan Event
+	prog        compiler.Program
+	cfg         *config.Config
+	planner     provider.Provider
+	executor    provider.Provider // nil when no "code" role LLM is configured
+	plannerCfg  config.LLMConfig
+	executorCfg config.LLMConfig
+	fm          *filemanager.FileManager
+	pool        *coderPool
+	baseDir     string // working directory for command execution
+	planFilter  string // if set, only process plans matching this name
+	locker          RequestLocker
+	stats           RunStats
+	events          chan Event
+	developerPrompt string // cached result of Eval("inject std.developer")
+}
+
+// getDeveloperPrompt returns the developer system prompt, caching it on first call.
+func (r *Runner) getDeveloperPrompt() (string, error) {
+	if r.developerPrompt == "" {
+		p, err := r.prog.Eval("inject std.developer")
+		if err != nil {
+			return "", fmt.Errorf("eval developer prompt: %w", err)
+		}
+		r.developerPrompt = p
+	}
+	return r.developerPrompt, nil
 }
 
 // SetPlanFilter restricts the runner to only process the named plan.
@@ -84,24 +99,39 @@ func (r *Runner) SetPlanFilter(name string) {
 
 // New creates a Runner from a compiled Program and configuration.
 // If locker is nil, no lock checking is performed.
+// The executor provider is optional — it is only required for code/debug steps.
 func New(prog compiler.Program, cfg *config.Config, baseDir string, locker RequestLocker) (*Runner, error) {
-	planner, err := provider.New(cfg.Planner)
+	planCfg, err := cfg.PlannerConfig()
+	if err != nil {
+		return nil, fmt.Errorf("planner config: %w", err)
+	}
+	planner, err := provider.New(planCfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating planner provider: %w", err)
 	}
-	executor, err := provider.New(cfg.Executor)
-	if err != nil {
-		return nil, fmt.Errorf("creating executor provider: %w", err)
+
+	// Executor is optional — only required for code/debug steps.
+	var executor provider.Provider
+	var execCfg config.LLMConfig
+	if ec, err := cfg.ExecutorConfig(); err == nil {
+		ep, err := provider.New(ec)
+		if err == nil {
+			executor = ep
+			execCfg = ec
+		}
 	}
+
 	return &Runner{
-		prog:     prog,
-		cfg:      cfg,
-		planner:  planner,
-		executor: executor,
-		fm:       filemanager.New(),
-		pool:     newCoderPool(),
-		baseDir:  baseDir,
-		locker:   locker,
+		prog:        prog,
+		cfg:         cfg,
+		planner:     planner,
+		executor:    executor,
+		plannerCfg:  planCfg,
+		executorCfg: execCfg,
+		fm:          filemanager.New(),
+		pool:        newCoderPool(),
+		baseDir:     baseDir,
+		locker:      locker,
 	}, nil
 }
 
@@ -139,7 +169,7 @@ func (r *Runner) Run(ctx context.Context) (<-chan Event, <-chan error) {
 			return err
 		}
 		r.mergeImpls(skeletons)
-		if err := r.runDiffAndSave(ctx, skeletons); err != nil {
+		if err := r.runDiffAndSave(skeletons); err != nil {
 			return err
 		}
 		if err := r.runCodeStep(ctx, skeletons); err != nil {
@@ -179,33 +209,6 @@ func (r *Runner) RunSkeleton(ctx context.Context) (<-chan Event, <-chan error) {
 				DeclCount:   len(skel.skeleton.Declarations),
 				ImplCount:   len(skel.skeleton.Impls),
 			}})
-		}
-		// Flush target files to disk.
-		if err := r.fm.Flush(); err != nil {
-			return fmt.Errorf("flush: %w", err)
-		}
-		if err := r.saveLock(); err != nil {
-			return err
-		}
-		r.emit(Event{Kind: EventSummary, Data: r.stats})
-		r.emit(Event{Kind: EventDone})
-		return nil
-	})
-}
-
-// RunPlan runs architect + diff + save + flush (everything before executor).
-func (r *Runner) RunPlan(ctx context.Context) (<-chan Event, <-chan error) {
-	return r.startAsync(func() error {
-		if err := r.loadTargets(); err != nil {
-			return err
-		}
-		skeletons, err := r.runArchitectStep(ctx)
-		if err != nil {
-			return err
-		}
-		r.mergeImpls(skeletons)
-		if err := r.runDiffAndSave(ctx, skeletons); err != nil {
-			return err
 		}
 		// Flush target files to disk.
 		if err := r.fm.Flush(); err != nil {
@@ -284,7 +287,7 @@ func (r *Runner) runArchitectStep(ctx context.Context) ([]planSkeletonResult, er
 }
 
 // runDiffAndSave applies the skeleton to target files and saves back to the plan file.
-func (r *Runner) runDiffAndSave(_ context.Context, skeletons []planSkeletonResult) error {
+func (r *Runner) runDiffAndSave(skeletons []planSkeletonResult) error {
 	// Diff — apply skeleton declarations to in-memory files.
 	r.emit(Event{Kind: EventStepStart, Step: "diff", Message: "applying skeleton to target files..."})
 	if err := r.diff(skeletons); err != nil {
@@ -459,8 +462,8 @@ func (r *Runner) architect(ctx context.Context) ([]planSkeletonResult, error) {
 			System:    system,
 			Messages:  []provider.Message{{Role: "user", Content: user}},
 			Tools:     []provider.ToolDefinition{tools.PlanSkeletonTool()},
-			Model:     r.cfg.Planner.Model,
-			MaxTokens: r.cfg.Planner.MaxTokens,
+			Model:     r.plannerCfg.Model,
+			MaxTokens: r.plannerCfg.MaxTokens,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("planner call for %s: %w", req.Name, err)

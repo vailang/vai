@@ -14,9 +14,7 @@ const (
 	EventWarning EventKind = "warning"
 
 	// Impl lifecycle events.
-	EventImplStart    EventKind = "impl_start"
-	EventImplComplete EventKind = "impl_complete"
-	EventImplFailed   EventKind = "impl_failed"
+	EventImplStart EventKind = "impl_start"
 
 	// Structured data events.
 	EventSkeleton EventKind = "skeleton"

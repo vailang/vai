@@ -13,8 +13,9 @@ Vai is a language that manages prompts and obligations to generate clear instruc
 | Command | Purpose |
 |---|---|
 | `vai build [file.vai]` | Parse + render (single file or package) |
+| `vai config llm list\|add\|remove` | Manage LLM provider entries in vai.toml |
 | `vai gen [skeleton\|plan\|code]` | Full generation pipeline via LLM |
-| `vai init <name>` | Scaffold a `vai.toml` |
+| `vai init <name>` | Scaffold a `vai.toml` (interactive setup wizard) |
 | `vai tree` | Show the package tree |
 
 Global flag: `--json` — emit JSON output instead of terminal text.
@@ -352,19 +353,25 @@ All support configurable `max_retries` and `delay_retry_seconds`.
 
 ## Configuration (`vai.toml`)
 
+LLM providers are configured as a `[[llm]]` array. Each entry has an optional `role` field (`"plan"` for the architect, `"code"` for the executor) and an optional `name` label.
+
 ```toml
 [lib]
 name = "myproject"
 prompts = "./prompts"
 
-[planner]
+[[llm]]
+name = "architect"
+role = "plan"
 provider = "anthropic"
-model = "claude-opus-4-5"
-max_tokens = 4096
+model = "claude-sonnet-4-6"
+max_tokens = 8000
 
-[executor]
+[[llm]]
+name = "coder"
+role = "code"
 provider = "anthropic"
-model = "claude-haiku-3-5"
+model = "claude-haiku-4-5"
 max_tokens = 4096
 
 [debug]
@@ -379,12 +386,26 @@ target = "arm64"
 ```
 
 Key fields:
+- `LLMConfig.name` — optional human-readable label (used for `vai config llm remove --name`)
+- `LLMConfig.role` — `"plan"` (architect), `"code"` (executor), or empty (available but not default)
 - `LLMConfig.schema` — wire format for custom providers with `base_url`
 - `LLMConfig.env_token_variable_name` — env var for API token
 - `DebugLangConfig.compile_check` — shell command; `{target}` is replaced with file paths
 - `DebugLangConfig.format` — `"json"` enables structured diagnostic parsing
 - `DebugLangConfig.tools` — extra commands (e.g. formatters) run after successful compile
 - `Config.vars` — variables for `[match]`/`[case]` resolution in .vai files
+
+The executor (code role) is lazily validated — it's only required when running `vai gen` or `vai gen code`. Running `vai gen skeleton` or `vai gen plan` only requires a plan-role LLM.
+
+Backward compatibility: legacy `[planner]`/`[executor]` sections are auto-migrated to `[[llm]]` entries on load.
+
+### Config CLI
+
+| Command | Purpose |
+|---|---|
+| `vai config llm list` | Show all configured LLM entries |
+| `vai config llm add --provider anthropic --model claude-sonnet-4-6 --role plan` | Add an LLM entry |
+| `vai config llm remove --name architect` | Remove an LLM entry by name |
 
 ## Lock File (`vai.lock`)
 
@@ -425,8 +446,9 @@ Body blocks are composed of `BodySegment` types: `TextSegment`, `UseRefSegment`,
 cmd/vai/
   main.go                    CLI entry point (Cobra)
   build_cmd.go               "vai build" subcommand
+  config_cmd.go              "vai config" subcommand (llm list/add/remove)
   gen_cmd.go                 "vai gen" subcommand (skeleton, plan, code)
-  init_cmd.go                "vai init" subcommand
+  init_cmd.go                "vai init" subcommand (interactive wizard)
   tree_cmd.go                "vai tree" subcommand
 
 internal/compiler/
@@ -495,8 +517,8 @@ internal/locker/
   hash.go                    SHA-256 hashing for plan/impl content
 
 internal/config/
-  vai_config.go              Config struct (TOML: lib, planner, executor, debug, vars)
-  loader.go                  FindConfig(), LoadConfig()
+  vai_config.go              Config struct (TOML: lib, [[llm]], debug, vars), PlannerConfig(), ExecutorConfig()
+  loader.go                  FindConfig(), LoadConfig() (with legacy migration), SaveConfig()
   package.go                 Package tree discovery, LoadPackageFiles()
 
 internal/coder/

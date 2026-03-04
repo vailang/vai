@@ -17,6 +17,7 @@ func main() {
 	rootCommand.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Output in JSON format")
 
 	rootCommand.AddCommand(buildCommand())
+	rootCommand.AddCommand(configCommand())
 	rootCommand.AddCommand(genCommand())
 	rootCommand.AddCommand(initCommand())
 	rootCommand.AddCommand(promptCommand())

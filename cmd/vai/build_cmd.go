@@ -34,19 +34,10 @@ func buildCommand() *cobra.Command {
 				prog, errs = comp.Parse(args[0])
 			} else {
 				// Package mode: find vai.toml, load files.
-				cwd, err := os.Getwd()
+				cfg, cfgPath, baseDir, err := loadProject()
 				if err != nil {
 					return err
 				}
-				cfgPath, err := config.FindConfig(cwd)
-				if err != nil {
-					return fmt.Errorf("no vai.toml found (run 'vai init <name>' to create one)")
-				}
-				cfg, err := config.LoadConfig(cfgPath)
-				if err != nil {
-					return err
-				}
-				baseDir := filepath.Dir(cfgPath)
 				comp.SetBaseDir(baseDir)
 				pkg := &config.Package{
 					Name:       cfg.Lib.Name,

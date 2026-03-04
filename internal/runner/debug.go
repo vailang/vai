@@ -121,9 +121,12 @@ func (r *Runner) fixCompileErrors(ctx context.Context, targets []string, errorOu
 // fixTargeted maps diagnostics to specific symbols and sends only the
 // failing function code to the LLM for each one.
 func (r *Runner) fixTargeted(ctx context.Context, targets []string, diags []diagnostic.Diagnostic) (bool, error) {
-	system, err := r.prog.Eval("inject std.developer")
+	if r.executor == nil {
+		return false, fmt.Errorf("no LLM with role \"code\" configured in vai.toml (required for debug)")
+	}
+	system, err := r.getDeveloperPrompt()
 	if err != nil {
-		return false, fmt.Errorf("eval developer prompt: %w", err)
+		return false, err
 	}
 
 	anyFixed := false
@@ -160,8 +163,8 @@ func (r *Runner) fixTargeted(ctx context.Context, targets []string, diags []diag
 				System:    system,
 				Messages:  []provider.Message{{Role: "user", Content: prompt.String()}},
 				Tools:     []provider.ToolDefinition{tools.WriteCodeTool()},
-				Model:     r.cfg.Executor.Model,
-				MaxTokens: r.cfg.Executor.MaxTokens,
+				Model:     r.executorCfg.Model,
+				MaxTokens: r.executorCfg.MaxTokens,
 			})
 			if err != nil {
 				continue
@@ -190,9 +193,9 @@ func (r *Runner) fixTargeted(ctx context.Context, targets []string, diags []diag
 // fixLegacy sends the full file and all errors to the LLM. Used as fallback
 // when structured diagnostics are not available.
 func (r *Runner) fixLegacy(ctx context.Context, targets []string, errorOutput string) (bool, error) {
-	system, err := r.prog.Eval("inject std.developer")
+	system, err := r.getDeveloperPrompt()
 	if err != nil {
-		return false, fmt.Errorf("eval developer prompt: %w", err)
+		return false, err
 	}
 
 	anyFixed := false
@@ -212,8 +215,8 @@ func (r *Runner) fixLegacy(ctx context.Context, targets []string, errorOutput st
 			System:    system,
 			Messages:  []provider.Message{{Role: "user", Content: userPrompt}},
 			Tools:     []provider.ToolDefinition{tools.ReportFixTool()},
-			Model:     r.cfg.Executor.Model,
-			MaxTokens: r.cfg.Executor.MaxTokens,
+			Model:     r.executorCfg.Model,
+			MaxTokens: r.executorCfg.MaxTokens,
 		})
 		if err != nil {
 			continue
