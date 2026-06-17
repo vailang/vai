@@ -1,3 +1,26 @@
+# The story of Vai
+
+Vai was an experiment that showed me a real problem I want to keep pursuing.
+
+The goal was to build a prompting language to avoid repetition in prompts and, at the same time, to split the work across different tiers of usage: larger and more expensive AI for architecture, smaller and cheaper AI for producing individual functions.
+
+The results were astonishing in economic terms, but they came with huge problems born from the fact that I was heading toward a language, and that is not what is actually needed. I realized it right away. Once Vai was built, even with costs far lower than the same result produced with Claude Code, I noticed two structural flaws:
+
+1. the difficulty of fitting Vai into projects that were already started and consolidated;
+2. the difficulty of moving and pivoting projects that were already underway.
+
+This translated into a language that, by itself, brought more difficulty than simplicity. It was born as an experiment, but it did not die.
+
+From this project I understood that the problem of artificial intelligence reading enormous files is real and worth solving, even though the providers are working on consolidating context and improving MCP tools for ever more performant and specific code reading.
+
+I decided not to abandon Vai, but to shift the focus elsewhere. So I extracted the use of tree-sitter to create an MCP that does what Vai did, but with the goal of providing tools to read code without pouring thousands of lines into the context. This improves how inspectable the code is for agents and, as a result, improves efficiency on large projects, with files already full of documentation and functions.
+
+If you are interested, I am leaving the repo and more details there. See you around, and do not stop!
+
+https://github.com/ocinsh/crwai
+
+---
+
 # Vai Lang
 
 > **Experimental project** — the API and syntax may change. Not yet production-ready.
